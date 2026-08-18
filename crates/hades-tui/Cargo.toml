@@ -1,0 +1,23 @@
+[package]
+name = "hades-tui"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+description = "Terminal User Interface subsystem for Hades"
+
+[dependencies]
+hades-core.workspace = true
+hades-config.workspace = true
+hades-events.workspace = true
+hades-provider.workspace = true
+ratatui.workspace = true
+crossterm.workspace = true
+tokio.workspace = true
+thiserror.workspace = true
+tracing.workspace = true
+futures.workspace = true
+
+[dev-dependencies]
+hades-storage.workspace = true
+tempfile = "3.17"

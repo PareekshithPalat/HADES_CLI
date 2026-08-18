@@ -1,0 +1,54 @@
+[workspace]
+resolver = "2"
+members = [
+    "crates/hades-cli",
+    "crates/hades-core",
+    "crates/hades-tui",
+    "crates/hades-config",
+    "crates/hades-events",
+    "crates/hades-storage",
+    "crates/hades-provider",
+]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2021"
+authors = ["Hades Contributors"]
+license = "MIT"
+description = "Hades: Universal AI Agent CLI"
+
+[workspace.dependencies]
+hades-config = { path = "crates/hades-config" }
+hades-events = { path = "crates/hades-events" }
+hades-storage = { path = "crates/hades-storage" }
+hades-provider = { path = "crates/hades-provider" }
+hades-core = { path = "crates/hades-core" }
+hades-tui = { path = "crates/hades-tui" }
+
+# Async runtime & HTTP
+tokio = { version = "1.43", features = ["full"] }
+reqwest = { version = "0.12", default-features = false, features = ["json", "stream", "rustls-tls"] }
+async-trait = "0.1"
+futures = "0.3"
+
+# Terminal UI & input
+ratatui = "0.29"
+crossterm = { version = "0.28", features = ["event-stream"] }
+
+# Serialization & configuration formats
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+toml = "0.8"
+
+# CLI & Platform Paths
+clap = { version = "4.5", features = ["derive"] }
+dirs = "6.0"
+
+# Error handling & logging
+thiserror = "2.0"
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter", "fmt"] }
+tracing-appender = "0.2"
+
+# Time utilities
+chrono = { version = "0.4", features = ["serde"] }

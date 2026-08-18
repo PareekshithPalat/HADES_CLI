@@ -1,0 +1,29 @@
+[package]
+name = "hades-cli"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+description = "Hades: Universal AI Agent CLI Binary"
+
+[[bin]]
+name = "hades"
+path = "src/main.rs"
+
+[dependencies]
+hades-core.workspace = true
+hades-tui.workspace = true
+hades-config.workspace = true
+hades-storage.workspace = true
+hades-events.workspace = true
+hades-provider.workspace = true
+clap.workspace = true
+tokio.workspace = true
+tracing.workspace = true
+tracing-subscriber.workspace = true
+tracing-appender.workspace = true
+dirs.workspace = true
+thiserror.workspace = true
+
+[dev-dependencies]
+tempfile = "3.17"

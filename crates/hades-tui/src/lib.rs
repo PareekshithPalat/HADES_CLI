@@ -1,0 +1,632 @@
+pub mod error;
+pub mod input;
+pub mod output;
+pub mod prompt;
+pub mod runner;
+pub mod state;
+pub mod terminal;
+pub mod theme;
+pub mod ui;
+
+pub use error::TuiError;
+pub use input::{InputHandler, KeyActionResult};
+pub use output::ConversationPrinter;
+pub use prompt::PromptManager;
+pub use runner::TuiRunner;
+pub use state::{ChatTurn, TuiState};
+pub use terminal::{init_modal_terminal, init_terminal, leave_modal_terminal, restore_terminal};
+pub use theme::HadesTheme;
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crossterm::event::{
+        KeyCode, KeyEvent, KeyEventKind, KeyEventState, KeyModifiers, MouseEvent, MouseEventKind,
+    };
+    use hades_core::{AppState, CommandOutput, HadesApp, StatusInfo};
+    use hades_provider::Model;
+    use ratatui::style::Style;
+    use ratatui::text::Line;
+    use tempfile::tempdir;
+
+    fn make_key(code: KeyCode) -> KeyEvent {
+        KeyEvent {
+            code,
+            modifiers: KeyModifiers::NONE,
+            kind: KeyEventKind::Press,
+            state: KeyEventState::NONE,
+        }
+    }
+
+    fn make_ctrl_key(code: KeyCode) -> KeyEvent {
+        KeyEvent {
+            code,
+            modifiers: KeyModifiers::CONTROL,
+            kind: KeyEventKind::Press,
+            state: KeyEventState::NONE,
+        }
+    }
+
+    fn make_mouse_scroll(kind: MouseEventKind) -> MouseEvent {
+        MouseEvent {
+            kind,
+            column: 10,
+            row: 10,
+            modifiers: KeyModifiers::NONE,
+        }
+    }
+
+    fn create_test_app() -> (HadesApp, tempfile::TempDir) {
+        let dir = tempdir().expect("create temp dir");
+        let config_service = hades_config::ConfigService::with_path(dir.path().join("config.toml"));
+        let storage_service = hades_storage::StorageService::with_root(dir.path().join("data"));
+        let event_bus = hades_events::EventBus::new();
+        let mut app = HadesApp::new(config_service, storage_service, event_bus);
+        app.init().expect("init app");
+        let _ = app.transition_to(AppState::Running);
+        (app, dir)
+    }
+
+    #[test]
+    fn test_slash_opens_command_palette() {
+        let (mut app, _dir) = create_test_app();
+        let mut state = TuiState::new();
+
+        assert_eq!(app.state(), AppState::Running);
+
+        let action =
+            InputHandler::handle_key_event(make_key(KeyCode::Char('/')), &mut app, &mut state)
+                .expect("handle key");
+
+        assert_eq!(action, KeyActionResult::Handled);
+        assert_eq!(app.state(), AppState::CommandPalette);
+        assert_eq!(state.selected_palette_index, 0);
+    }
+
+    #[test]
+    fn test_palette_navigation_up_down() {
+        let (mut app, _dir) = create_test_app();
+        let mut state = TuiState::new();
+
+        // Open palette
+        InputHandler::handle_key_event(make_key(KeyCode::Char('/')), &mut app, &mut state)
+            .expect("open palette");
+
+        let total = app.commands().list().len();
+        assert!(total >= 3); // help, status, model, exit
+
+        // Press Down
+        InputHandler::handle_key_event(make_key(KeyCode::Down), &mut app, &mut state)
+            .expect("press down");
+        assert_eq!(state.selected_palette_index, 1);
+
+        // Press Down
+        InputHandler::handle_key_event(make_key(KeyCode::Down), &mut app, &mut state)
+            .expect("press down");
+        assert_eq!(state.selected_palette_index, 2);
+
+        // Press Up
+        InputHandler::handle_key_event(make_key(KeyCode::Up), &mut app, &mut state)
+            .expect("press up");
+        assert_eq!(state.selected_palette_index, 1);
+    }
+
+    #[test]
+    fn test_palette_esc_closes_palette() {
+        let (mut app, _dir) = create_test_app();
+        let mut state = TuiState::new();
+
+        // Open palette
+        InputHandler::handle_key_event(make_key(KeyCode::Char('/')), &mut app, &mut state)
+            .expect("open palette");
+        assert_eq!(app.state(), AppState::CommandPalette);
+
+        // Press Esc
+        let action = InputHandler::handle_key_event(make_key(KeyCode::Esc), &mut app, &mut state)
+            .expect("press esc");
+
+        assert_eq!(action, KeyActionResult::Handled);
+        assert_eq!(app.state(), AppState::Running);
+    }
+
+    #[test]
+    fn test_palette_enter_executes_help() {
+        let (mut app, _dir) = create_test_app();
+        let mut state = TuiState::new();
+
+        // Open palette
+        InputHandler::handle_key_event(make_key(KeyCode::Char('/')), &mut app, &mut state)
+            .expect("open palette");
+        state.selected_palette_index = 0; // /help
+
+        // Press Enter
+        let action = InputHandler::handle_key_event(make_key(KeyCode::Enter), &mut app, &mut state)
+            .expect("press enter");
+
+        assert_eq!(action, KeyActionResult::Handled);
+        assert_eq!(app.state(), AppState::Running);
+        assert!(matches!(state.active_output, Some(CommandOutput::Help(_))));
+    }
+
+    #[test]
+    fn test_ctrl_c_initiates_shutdown() {
+        let (mut app, _dir) = create_test_app();
+        let mut state = TuiState::new();
+
+        let action =
+            InputHandler::handle_key_event(make_ctrl_key(KeyCode::Char('c')), &mut app, &mut state)
+                .expect("press ctrl+c");
+
+        assert_eq!(action, KeyActionResult::Quit);
+        assert_eq!(app.state(), AppState::Exited);
+    }
+
+    #[test]
+    fn test_provider_and_model_selection_flow() {
+        let (mut app, _dir) = create_test_app();
+        let mut state = TuiState::new();
+
+        // 1. Transition to ProviderSelect
+        app.transition_to(AppState::ProviderSelect).unwrap();
+        state.providers = app.model_manager().list_providers();
+        assert!(!state.providers.is_empty());
+
+        // 2. Select Provider
+        let action =
+            InputHandler::handle_key_event(make_key(KeyCode::Enter), &mut app, &mut state).unwrap();
+        assert!(matches!(action, KeyActionResult::SelectProvider(_)));
+
+        // 3. Transition to ModelSelect
+        app.transition_to(AppState::ModelSelect).unwrap();
+        state.models = vec![
+            Model::new("gpt-4o", "openai", "GPT-4o Frontier"),
+            Model::new("gpt-4o-mini", "openai", "GPT-4o Mini"),
+        ];
+        state.selected_model_index = 0;
+
+        // Navigate down
+        InputHandler::handle_key_event(make_key(KeyCode::Down), &mut app, &mut state).unwrap();
+        assert_eq!(state.selected_model_index, 1);
+
+        // Select model
+        InputHandler::handle_key_event(make_key(KeyCode::Enter), &mut app, &mut state).unwrap();
+        assert_eq!(app.state(), AppState::ModelInfo);
+        assert_eq!(state.selected_model.as_ref().unwrap().id, "gpt-4o-mini");
+
+        // Proceed to CredentialInput
+        InputHandler::handle_key_event(make_key(KeyCode::Enter), &mut app, &mut state).unwrap();
+        assert_eq!(app.state(), AppState::CredentialInput);
+
+        // Type credentials
+        InputHandler::handle_key_event(make_key(KeyCode::Char('s')), &mut app, &mut state).unwrap();
+        InputHandler::handle_key_event(make_key(KeyCode::Char('k')), &mut app, &mut state).unwrap();
+        InputHandler::handle_key_event(make_key(KeyCode::Char('-')), &mut app, &mut state).unwrap();
+        assert_eq!(state.credential_input, "sk-");
+
+        // Submit credential for verification
+        let action =
+            InputHandler::handle_key_event(make_key(KeyCode::Enter), &mut app, &mut state).unwrap();
+        assert_eq!(action, KeyActionResult::VerifyModel);
+        assert_eq!(app.state(), AppState::Verifying);
+    }
+
+    #[test]
+    fn test_conversation_layout_calculation() {
+        let lines = vec![
+            Line::from("Short line"),
+            Line::from("This is a significantly longer line of text designed to test wrapping calculations."),
+            Line::from(""),
+        ];
+
+        let wrapped_wide = ui::estimate_wrapped_line_count(&lines, 120);
+        assert_eq!(wrapped_wide, 3);
+
+        let wrapped_narrow = ui::estimate_wrapped_line_count(&lines, 30);
+        assert!(wrapped_narrow > 3);
+    }
+
+    #[test]
+    fn test_conversation_overflow() {
+        let mut state = TuiState::new();
+        for i in 0..15 {
+            state.turns.push(ChatTurn::with_response(
+                format!("User question {}", i),
+                format!("Hades response answering question {}", i),
+            ));
+        }
+
+        assert_eq!(state.turns.len(), 15);
+        let history = state.chat_history();
+        assert_eq!(history.len(), 15);
+    }
+
+    #[test]
+    fn test_automatic_scroll_to_bottom() {
+        let mut state = TuiState::new();
+        assert!(state.auto_scroll_to_bottom);
+
+        // Adding turns maintains auto_scroll_to_bottom
+        state
+            .turns
+            .push(ChatTurn::with_response("Hello", "Hi there!"));
+        assert!(state.auto_scroll_to_bottom);
+
+        // PageUp turns off auto_scroll_to_bottom
+        let (mut app, _dir) = create_test_app();
+        InputHandler::handle_key_event(make_key(KeyCode::PageUp), &mut app, &mut state).unwrap();
+        assert!(!state.auto_scroll_to_bottom);
+
+        // End key restores auto_scroll_to_bottom when prompt is empty
+        InputHandler::handle_key_event(make_key(KeyCode::End), &mut app, &mut state).unwrap();
+        assert!(state.auto_scroll_to_bottom);
+    }
+
+    #[test]
+    fn test_wrapped_messages() {
+        let long_message = "A".repeat(250);
+        let lines = vec![Line::from(long_message)];
+        let count = ui::estimate_wrapped_line_count(&lines, 80);
+        assert_eq!(count, 4); // ceil(250 / 80) = 4
+    }
+
+    #[test]
+    fn test_streaming_response_growth() {
+        let mut turn = ChatTurn::new("What is Rust?");
+        assert_eq!(turn.activity_text.as_deref(), Some("Thinking..."));
+        assert_eq!(turn.assistant_response, None);
+
+        turn.append_response_chunk("Rust is ");
+        assert_eq!(turn.activity_text, None);
+        assert_eq!(turn.assistant_response.as_deref(), Some("Rust is "));
+
+        turn.append_response_chunk("a systems language.");
+        assert_eq!(
+            turn.assistant_response.as_deref(),
+            Some("Rust is a systems language.")
+        );
+    }
+
+    #[test]
+    fn test_fixed_prompt_region() {
+        let (mut app, _dir) = create_test_app();
+        let mut state = TuiState::new();
+
+        InputHandler::handle_key_event(make_key(KeyCode::Char('h')), &mut app, &mut state).unwrap();
+        InputHandler::handle_key_event(make_key(KeyCode::Char('i')), &mut app, &mut state).unwrap();
+        assert_eq!(state.prompt_input, "hi");
+        assert_eq!(state.prompt_cursor_position, 2);
+
+        // Prompt input is isolated from turns
+        assert!(state.turns.is_empty());
+    }
+
+    #[test]
+    fn test_fixed_status_region() {
+        let (app, _dir) = create_test_app();
+        assert_eq!(app.active_model_display(), "Not configured");
+        assert_eq!(app.config().general.default_mode, "simple");
+    }
+
+    #[test]
+    fn test_terminal_resize() {
+        let lines = vec![Line::from(
+            "Responsive line for testing terminal resize behavior.",
+        )];
+
+        let small_width = ui::estimate_wrapped_line_count(&lines, 20);
+        let med_width = ui::estimate_wrapped_line_count(&lines, 60);
+        let large_width = ui::estimate_wrapped_line_count(&lines, 120);
+
+        assert!(small_width > med_width);
+        assert_eq!(large_width, 1);
+    }
+
+    #[test]
+    fn test_empty_conversation() {
+        let state = TuiState::new();
+        assert!(state.turns.is_empty());
+        assert!(state.chat_history().is_empty());
+        assert_eq!(state.scroll_offset, 0);
+    }
+
+    #[test]
+    fn test_long_conversation() {
+        let mut state = TuiState::new();
+        for i in 0..50 {
+            state.turns.push(ChatTurn::with_response(
+                format!("User message #{}", i),
+                format!("Hades reply #{}", i),
+            ));
+        }
+        assert_eq!(state.turns.len(), 50);
+        assert_eq!(state.chat_history().len(), 50);
+    }
+
+    #[test]
+    fn test_activity_lifecycle() {
+        let mut state = TuiState::new();
+        assert_eq!(state.spinner_frame, 0);
+
+        state.tick_spinner();
+        assert_eq!(state.spinner_frame, 1);
+        assert_ne!(state.spinner_char(), "");
+
+        let mut turn = ChatTurn::new("Task prompt");
+        assert!(turn.activity_text.is_some());
+
+        turn.set_response("Task completed");
+        assert_eq!(turn.activity_text, None);
+        assert_eq!(turn.assistant_response.as_deref(), Some("Task completed"));
+    }
+
+    #[test]
+    fn test_user_message_activity_response_ordering() {
+        let (mut app, _dir) = create_test_app();
+        let mut state = TuiState::new();
+
+        // Type prompt
+        for c in "Hello Hades".chars() {
+            InputHandler::handle_key_event(make_key(KeyCode::Char(c)), &mut app, &mut state)
+                .unwrap();
+        }
+        assert_eq!(state.prompt_input, "Hello Hades");
+
+        // Submit prompt
+        let action =
+            InputHandler::handle_key_event(make_key(KeyCode::Enter), &mut app, &mut state).unwrap();
+        assert_eq!(
+            action,
+            KeyActionResult::SubmitPrompt("Hello Hades".to_string())
+        );
+        assert_eq!(state.prompt_input, "");
+
+        // Turn is created with user prompt and thinking state
+        assert_eq!(state.turns.len(), 1);
+        let turn = &state.turns[0];
+        assert_eq!(turn.user_prompt, "Hello Hades");
+        assert_eq!(turn.activity_text.as_deref(), Some("Thinking..."));
+        assert_eq!(turn.assistant_response, None);
+
+        // Stream starts
+        state.turns[0].append_response_chunk("Hello! ");
+        assert_eq!(state.turns[0].activity_text, None);
+        assert_eq!(
+            state.turns[0].assistant_response.as_deref(),
+            Some("Hello! ")
+        );
+
+        // Stream finishes
+        state.turns[0].append_response_chunk("How can I assist?");
+        assert_eq!(
+            state.turns[0].assistant_response.as_deref(),
+            Some("Hello! How can I assist?")
+        );
+    }
+
+    #[test]
+    fn test_terminal_restoration_is_idempotent() {
+        let res1 = restore_terminal();
+        assert!(res1.is_ok());
+        let res2 = restore_terminal();
+        assert!(res2.is_ok());
+    }
+
+    #[test]
+    fn test_conversation_printer_helpers() {
+        ConversationPrinter::print_user_prompt("Test prompt");
+        ConversationPrinter::start_hades_turn("Thinking...", "⠋");
+        ConversationPrinter::update_activity("Thinking...", "⠙");
+        ConversationPrinter::start_streaming_chunk("First chunk");
+        ConversationPrinter::append_streaming_chunk(" second chunk");
+        ConversationPrinter::finalize_hades_turn();
+        ConversationPrinter::print_hades_full_response("Full response text");
+        ConversationPrinter::print_turn_error("Sample error");
+        ConversationPrinter::print_command_output(&CommandOutput::Status(StatusInfo {
+            application: "Hades".into(),
+            version: "0.1.0".into(),
+            model: "Not configured".into(),
+            mode: "simple".into(),
+            storage_status: "Healthy".into(),
+            config_status: "Loaded".into(),
+        }));
+    }
+
+    #[test]
+    fn test_hades_theme_and_branding() {
+        assert_eq!(HadesTheme::TRIDENT, "🔱");
+        assert!(
+            HadesTheme::banner().contains("H A D E S")
+                || HadesTheme::banner().contains("Universal AI Agent")
+        );
+        assert!(HadesTheme::compact_banner().contains("H A D E S"));
+    }
+
+    #[test]
+    fn test_prompt_manager_lifecycle() {
+        PromptManager::render_prompt("hello", 5, "Not configured", "simple");
+        PromptManager::clear_prompt();
+    }
+
+    #[test]
+    fn test_prefix_aware_text_wrapping() {
+        let text = "Feel free to ask for a deeper dive into any specific variant, a code example for a particular application, or guidance on scaling models.";
+        let wrapped = ui::wrap_turn_text(text, 60, "  └─ ", "     ", Style::default());
+        assert!(wrapped.len() >= 2);
+
+        let first_prefix = &wrapped[0].spans[0].content;
+        assert_eq!(first_prefix, "  └─ ");
+
+        for line in &wrapped[1..] {
+            let cont_prefix = &line.spans[0].content;
+            assert_eq!(cont_prefix, "     ");
+        }
+    }
+
+    #[test]
+    fn test_no_horizontal_overflow() {
+        let long_para = "Word ".repeat(50);
+        let width = 40;
+        let wrapped = ui::wrap_turn_text(&long_para, width, "  └─ ", "     ", Style::default());
+        for line in wrapped {
+            let line_len: usize = line.spans.iter().map(|s| s.content.chars().count()).sum();
+            assert!(
+                line_len <= width,
+                "Line length {} exceeded width {}",
+                line_len,
+                width
+            );
+        }
+    }
+
+    #[test]
+    fn test_bottom_region_is_reserved() {
+        let total_height = 24u16;
+        let header_height = 4u16;
+        let reserved_bottom = 3u16; // 1 divider + 1 prompt + 1 status
+        let conversation_height = total_height.saturating_sub(header_height + reserved_bottom);
+        assert_eq!(conversation_height, 17);
+        assert_eq!(
+            header_height + conversation_height + reserved_bottom,
+            total_height
+        );
+    }
+
+    // Granular Incremental Scrolling Tests
+
+    #[test]
+    fn test_one_line_up_and_down() {
+        let mut state = TuiState::new();
+        state.update_geometry(100, 30); // max_scroll = 70, scroll_offset = 70
+        assert_eq!(state.scroll_offset, 70);
+
+        // One line up (↑)
+        state.scroll_up(1);
+        assert_eq!(state.scroll_offset, 69);
+        assert!(!state.auto_scroll_to_bottom);
+        assert!(state.has_new_content_below);
+
+        // Another line up (↑)
+        state.scroll_up(1);
+        assert_eq!(state.scroll_offset, 68);
+
+        // One line down (↓)
+        state.scroll_down(1);
+        assert_eq!(state.scroll_offset, 69);
+
+        // One line down to reach bottom (↓)
+        state.scroll_down(1);
+        assert_eq!(state.scroll_offset, 70);
+        assert!(state.auto_scroll_to_bottom);
+        assert!(!state.has_new_content_below);
+    }
+
+    #[test]
+    fn test_wheel_up_and_down_small_delta() {
+        let (mut app, _dir) = create_test_app();
+        let mut state = TuiState::new();
+        state.update_geometry(100, 30); // max_scroll = 70, scroll_offset = 70
+
+        // One wheel-up notch (3 lines)
+        let _ = InputHandler::handle_mouse_event(
+            make_mouse_scroll(MouseEventKind::ScrollUp),
+            &mut app,
+            &mut state,
+        );
+        assert_eq!(state.scroll_offset, 67);
+        assert!(!state.auto_scroll_to_bottom);
+
+        // Another wheel-up notch (3 lines)
+        let _ = InputHandler::handle_mouse_event(
+            make_mouse_scroll(MouseEventKind::ScrollUp),
+            &mut app,
+            &mut state,
+        );
+        assert_eq!(state.scroll_offset, 64);
+
+        // One wheel-down notch (3 lines)
+        let _ = InputHandler::handle_mouse_event(
+            make_mouse_scroll(MouseEventKind::ScrollDown),
+            &mut app,
+            &mut state,
+        );
+        assert_eq!(state.scroll_offset, 67);
+    }
+
+    #[test]
+    fn test_page_up_and_page_down() {
+        let mut state = TuiState::new();
+        state.update_geometry(150, 30); // viewport = 30, step = 28, max_scroll = 120
+        state.scroll_offset = 100;
+        state.auto_scroll_to_bottom = false;
+
+        // PageUp (moves by viewport - 2 = 28 lines)
+        state.page_up();
+        assert_eq!(state.scroll_offset, 72);
+
+        // PageDown (moves by 28 lines)
+        state.page_down();
+        assert_eq!(state.scroll_offset, 100);
+    }
+
+    #[test]
+    fn test_home_and_end_navigation() {
+        let mut state = TuiState::new();
+        state.update_geometry(100, 30); // max_scroll = 70
+
+        // Home -> jumps to top (0)
+        state.scroll_to_top();
+        assert_eq!(state.scroll_offset, 0);
+        assert!(!state.auto_scroll_to_bottom);
+        assert!(state.has_new_content_below);
+
+        // End -> jumps to bottom (70)
+        state.scroll_to_bottom();
+        assert_eq!(state.scroll_offset, 70);
+        assert!(state.auto_scroll_to_bottom);
+        assert!(!state.has_new_content_below);
+    }
+
+    #[test]
+    fn test_boundary_clamping() {
+        let mut state = TuiState::new();
+        state.update_geometry(50, 20); // max_scroll = 30
+
+        // Top boundary: Repeated scroll_up at 0 never underflows
+        state.scroll_offset = 1;
+        state.scroll_up(5);
+        assert_eq!(state.scroll_offset, 0);
+        state.scroll_up(10);
+        assert_eq!(state.scroll_offset, 0);
+
+        // Bottom boundary: Repeated scroll_down at max_scroll never exceeds max_scroll
+        state.scroll_offset = 29;
+        state.scroll_down(5);
+        assert_eq!(state.scroll_offset, 30);
+        state.scroll_down(10);
+        assert_eq!(state.scroll_offset, 30);
+    }
+
+    #[test]
+    fn test_streaming_does_not_override_manual_scroll() {
+        let mut state = TuiState::new();
+        state.update_geometry(50, 20); // max_scroll = 30, offset = 30
+
+        // User scrolls up to line 15
+        state.scroll_up(15);
+        assert_eq!(state.scroll_offset, 15);
+        assert!(!state.auto_scroll_to_bottom);
+
+        // Stream adds 20 new lines (total = 70 lines, max_scroll = 50)
+        state.update_geometry(70, 20);
+
+        // Viewport MUST stay at 15!
+        assert_eq!(state.scroll_offset, 15);
+        assert!(state.has_new_content_below);
+
+        // User presses End
+        state.scroll_to_bottom();
+        assert_eq!(state.scroll_offset, 50);
+        assert!(state.auto_scroll_to_bottom);
+        assert!(!state.has_new_content_below);
+    }
+}

@@ -1,0 +1,304 @@
+use hades_core::CommandOutput;
+use hades_provider::{Model, ProviderMetadata, Usage};
+
+/// Represents a single chronological turn in the conversation stream.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ChatTurn {
+    /// User submitted prompt text.
+    pub user_prompt: String,
+    /// Progressive streamed or finalized assistant response text.
+    pub assistant_response: Option<String>,
+    /// Transient activity status text (e.g. "Thinking...", "Working..."). Cleared when streaming begins.
+    pub activity_text: Option<String>,
+    /// Diagnostic error message if turn execution failed.
+    pub error_text: Option<String>,
+}
+
+impl ChatTurn {
+    /// Constructs a new active turn with initial activity indicator.
+    pub fn new(prompt: impl Into<String>) -> Self {
+        Self {
+            user_prompt: prompt.into(),
+            assistant_response: None,
+            activity_text: Some("Thinking...".to_string()),
+            error_text: None,
+        }
+    }
+
+    /// Constructs a completed turn with an established response.
+    pub fn with_response(prompt: impl Into<String>, response: impl Into<String>) -> Self {
+        Self {
+            user_prompt: prompt.into(),
+            assistant_response: Some(response.into()),
+            activity_text: None,
+            error_text: None,
+        }
+    }
+
+    /// Appends delta text to the assistant response and clears transient activity text.
+    pub fn append_response_chunk(&mut self, chunk: &str) {
+        self.activity_text = None;
+        let response = self.assistant_response.get_or_insert_with(String::new);
+        response.push_str(chunk);
+    }
+
+    /// Sets a full response and clears transient activity text.
+    pub fn set_response(&mut self, response: impl Into<String>) {
+        self.activity_text = None;
+        self.assistant_response = Some(response.into());
+    }
+
+    /// Records an error for this turn and clears transient activity text.
+    pub fn set_error(&mut self, error: impl Into<String>) {
+        self.activity_text = None;
+        self.error_text = Some(error.into());
+    }
+}
+
+/// Transient UI view state for rendering, scrolling, and input handling.
+#[derive(Debug, Clone, Default)]
+pub struct TuiState {
+    /// Active command output message displayed in main viewport.
+    pub active_output: Option<CommandOutput>,
+
+    /// Global error message banner, if any.
+    pub error_message: Option<String>,
+
+    /// Currently highlighted index within the command palette.
+    pub selected_palette_index: usize,
+
+    /// User prompt input buffer for chat in Running state.
+    pub prompt_input: String,
+
+    /// Cursor position in prompt input.
+    pub prompt_cursor_position: usize,
+
+    /// Chronological list of conversation turns.
+    pub turns: Vec<ChatTurn>,
+
+    /// Number of rendered lines scrolled from top.
+    pub scroll_offset: usize,
+
+    /// Height of conversation area in rows.
+    pub viewport_height: usize,
+
+    /// Total number of rendered wrapped lines in the conversation stream.
+    pub content_height: usize,
+
+    /// Whether the conversation view automatically follows newly arrived streaming tokens.
+    pub auto_scroll_to_bottom: bool,
+
+    /// Whether new content has arrived while the user is scrolled away from the bottom.
+    pub has_new_content_below: bool,
+
+    /// Frame index for subtle activity spinner animation.
+    pub spinner_frame: usize,
+
+    /// Token usage metrics for the latest generation.
+    pub current_usage: Option<Usage>,
+
+    // Provider Setup Workflow Fields
+    /// List of available AI providers.
+    pub providers: Vec<ProviderMetadata>,
+
+    /// Currently selected provider index in `ProviderSelect` screen.
+    pub selected_provider_index: usize,
+
+    /// List of discovered or supported models for the chosen provider.
+    pub models: Vec<Model>,
+
+    /// Currently selected model index in `ModelSelect` screen.
+    pub selected_model_index: usize,
+
+    /// Selected model being inspected on the `ModelInfo` screen.
+    pub selected_model: Option<Model>,
+
+    /// Plaintext credential input buffer (displayed as masked `******`).
+    pub credential_input: String,
+
+    /// Cursor position in credential input.
+    pub credential_cursor_position: usize,
+
+    /// Optional custom endpoint override URL.
+    pub custom_endpoint_input: String,
+
+    /// Whether editing custom endpoint field instead of API key.
+    pub is_editing_endpoint: bool,
+
+    /// Diagnostic error message when verification fails.
+    pub verification_error: Option<String>,
+
+    /// Selected action index on `VerificationFailed` screen (0 = Retry, 1 = Change Credential, 2 = Back).
+    pub verification_action_index: usize,
+}
+
+impl TuiState {
+    /// Creates a new `TuiState` instance initialized with auto-scrolling enabled.
+    pub fn new() -> Self {
+        Self {
+            auto_scroll_to_bottom: true,
+            has_new_content_below: false,
+            ..Default::default()
+        }
+    }
+
+    /// Sets an error message to display in the UI.
+    pub fn set_error(&mut self, error: impl Into<String>) {
+        self.error_message = Some(error.into());
+    }
+
+    /// Clears any active error message.
+    pub fn clear_error(&mut self) {
+        self.error_message = None;
+    }
+
+    /// Sets active command output and scrolls to show it.
+    pub fn set_output(&mut self, output: CommandOutput) {
+        self.active_output = Some(output);
+        self.error_message = None;
+        self.scroll_to_bottom();
+    }
+
+    /// Appends a character to the user chat prompt.
+    pub fn push_prompt_char(&mut self, c: char) {
+        self.prompt_input.insert(self.prompt_cursor_position, c);
+        self.prompt_cursor_position += 1;
+    }
+
+    /// Removes a character preceding the cursor in the user chat prompt.
+    pub fn pop_prompt_char(&mut self) {
+        if self.prompt_cursor_position > 0 {
+            self.prompt_cursor_position -= 1;
+            self.prompt_input.remove(self.prompt_cursor_position);
+        }
+    }
+
+    /// Appends a character to the credential input buffer.
+    pub fn push_credential_char(&mut self, c: char) {
+        if self.is_editing_endpoint {
+            self.custom_endpoint_input.push(c);
+        } else {
+            self.credential_input
+                .insert(self.credential_cursor_position, c);
+            self.credential_cursor_position += 1;
+        }
+    }
+
+    /// Removes a character from the credential input buffer.
+    pub fn pop_credential_char(&mut self) {
+        if self.is_editing_endpoint {
+            self.custom_endpoint_input.pop();
+        } else if self.credential_cursor_position > 0 {
+            self.credential_cursor_position -= 1;
+            self.credential_input
+                .remove(self.credential_cursor_position);
+        }
+    }
+
+    /// Advances the spinner animation frame.
+    pub fn tick_spinner(&mut self) {
+        self.spinner_frame = (self.spinner_frame + 1) % 10;
+    }
+
+    /// Returns the current spinner character glyph.
+    pub fn spinner_char(&self) -> &'static str {
+        const SPINNER_FRAMES: &[&str] = &["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"];
+        SPINNER_FRAMES[self.spinner_frame % SPINNER_FRAMES.len()]
+    }
+
+    /// Computes the maximum valid scroll offset given current content and viewport dimensions.
+    pub fn max_scroll_offset(&self) -> usize {
+        self.content_height.saturating_sub(self.viewport_height)
+    }
+
+    /// Updates rendered conversation geometry and synchronizes scroll offset safely.
+    pub fn update_geometry(&mut self, content_height: usize, viewport_height: usize) {
+        self.content_height = content_height;
+        self.viewport_height = viewport_height;
+
+        let max_scroll = self.max_scroll_offset();
+        if self.auto_scroll_to_bottom {
+            self.scroll_offset = max_scroll;
+            self.has_new_content_below = false;
+        } else {
+            if self.scroll_offset > max_scroll {
+                self.scroll_offset = max_scroll;
+            }
+            self.has_new_content_below = self.scroll_offset < max_scroll;
+        }
+    }
+
+    /// Legacy alias for update_geometry.
+    pub fn update_viewport_dimensions(&mut self, total_lines: usize, height: usize) {
+        self.update_geometry(total_lines, height);
+    }
+
+    /// Handles arrival of new streaming or turn content.
+    pub fn on_new_content(&mut self, total_lines: usize) {
+        self.content_height = total_lines;
+        let max_scroll = self.max_scroll_offset();
+        if self.auto_scroll_to_bottom {
+            self.scroll_offset = max_scroll;
+            self.has_new_content_below = false;
+        } else {
+            self.has_new_content_below = self.scroll_offset < max_scroll;
+        }
+    }
+
+    /// Scrolls the conversation view upward by the specified number of rows.
+    pub fn scroll_up(&mut self, lines: usize) {
+        self.scroll_offset = self.scroll_offset.saturating_sub(lines);
+        self.auto_scroll_to_bottom = false;
+        self.has_new_content_below = self.scroll_offset < self.max_scroll_offset();
+    }
+
+    /// Scrolls the conversation view downward by the specified number of rows.
+    pub fn scroll_down(&mut self, lines: usize) {
+        let max_scroll = self.max_scroll_offset();
+        self.scroll_offset = (self.scroll_offset + lines).min(max_scroll);
+        if self.scroll_offset >= max_scroll {
+            self.auto_scroll_to_bottom = true;
+            self.has_new_content_below = false;
+        } else {
+            self.has_new_content_below = true;
+        }
+    }
+
+    /// Scrolls one viewport upward (PageUp).
+    pub fn page_up(&mut self) {
+        let step = self.viewport_height.saturating_sub(2).max(1);
+        self.scroll_up(step);
+    }
+
+    /// Scrolls one viewport downward (PageDown).
+    pub fn page_down(&mut self) {
+        let step = self.viewport_height.saturating_sub(2).max(1);
+        self.scroll_down(step);
+    }
+
+    /// Scrolls directly to the beginning of the conversation history (Home).
+    pub fn scroll_to_top(&mut self) {
+        self.scroll_offset = 0;
+        self.auto_scroll_to_bottom = false;
+        self.has_new_content_below = self.content_height > self.viewport_height;
+    }
+
+    /// Scrolls directly to the latest conversation content at the bottom (End).
+    pub fn scroll_to_bottom(&mut self) {
+        self.scroll_offset = self.max_scroll_offset();
+        self.auto_scroll_to_bottom = true;
+        self.has_new_content_below = false;
+    }
+
+    /// Backward compatibility helper returning completed prompt/response pairs.
+    pub fn chat_history(&self) -> Vec<(String, String)> {
+        self.turns
+            .iter()
+            .filter_map(|turn| {
+                turn.assistant_response
+                    .as_ref()
+                    .map(|resp| (turn.user_prompt.clone(), resp.clone()))
+            })
+            .collect()
+    }
+}
