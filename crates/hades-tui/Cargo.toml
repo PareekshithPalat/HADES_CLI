@@ -10,14 +10,16 @@ description = "Terminal User Interface subsystem for Hades"
 hades-core.workspace = true
 hades-config.workspace = true
 hades-events.workspace = true
+hades-storage.workspace = true
 hades-provider.workspace = true
+hades-tools.workspace = true
 ratatui.workspace = true
 crossterm.workspace = true
 tokio.workspace = true
 thiserror.workspace = true
 tracing.workspace = true
 futures.workspace = true
+serde_json.workspace = true
 
 [dev-dependencies]
-hades-storage.workspace = true
 tempfile = "3.17"

@@ -118,10 +118,187 @@ pub enum HadesEvent {
         error: String,
     },
 
+    /// A new conversation session was created.
+    SessionCreated {
+        timestamp: DateTime<Utc>,
+        session_id: String,
+        title: String,
+    },
+
+    /// The active session was switched.
+    SessionSwitched {
+        timestamp: DateTime<Utc>,
+        from_session_id: Option<String>,
+        to_session_id: String,
+    },
+
+    /// A conversation session was deleted.
+    SessionDeleted {
+        timestamp: DateTime<Utc>,
+        session_id: String,
+    },
+
+    /// A conversation session was renamed.
+    SessionRenamed {
+        timestamp: DateTime<Utc>,
+        session_id: String,
+        old_title: String,
+        new_title: String,
+    },
+
+    /// Active model was switched for the current session.
+    ModelSwitched {
+        timestamp: DateTime<Utc>,
+        session_id: String,
+        provider_id: String,
+        model_id: String,
+    },
+
+    /// Older messages were truncated from active context window.
+    ContextTruncated {
+        timestamp: DateTime<Utc>,
+        session_id: String,
+        total_messages: usize,
+        included_messages: usize,
+        estimated_tokens: usize,
+    },
+
+    /// A structured message was persisted to session store.
+    MessagePersisted {
+        timestamp: DateTime<Utc>,
+        session_id: String,
+        message_id: String,
+        role: String,
+    },
+
     /// An application-level error occurred.
     ErrorOccurred {
         timestamp: DateTime<Utc>,
         error: String,
+    },
+
+    /// A project workspace was detected.
+    WorkspaceDetected {
+        timestamp: DateTime<Utc>,
+        root: PathBuf,
+        project_type: String,
+    },
+
+    /// A tool execution was requested.
+    ToolRequested {
+        timestamp: DateTime<Utc>,
+        execution_id: String,
+        session_id: String,
+        tool_name: String,
+        arguments: String,
+    },
+
+    /// Tool execution requires explicit user authorization.
+    ToolApprovalRequested {
+        timestamp: DateTime<Utc>,
+        execution_id: String,
+        session_id: String,
+        tool_name: String,
+        risk_level: String,
+        summary: String,
+        details: String,
+    },
+
+    /// Tool execution was approved by the user.
+    ToolApproved {
+        timestamp: DateTime<Utc>,
+        execution_id: String,
+        decision: String,
+    },
+
+    /// Tool execution was denied.
+    ToolDenied {
+        timestamp: DateTime<Utc>,
+        execution_id: String,
+        reason: String,
+    },
+
+    /// Tool execution commenced.
+    ToolStarted {
+        timestamp: DateTime<Utc>,
+        execution_id: String,
+        tool_name: String,
+    },
+
+    /// Tool execution completed.
+    ToolCompleted {
+        timestamp: DateTime<Utc>,
+        execution_id: String,
+        tool_name: String,
+        status: String,
+        is_truncated: bool,
+    },
+
+    /// Tool execution failed.
+    ToolFailed {
+        timestamp: DateTime<Utc>,
+        execution_id: String,
+        tool_name: String,
+        error: String,
+    },
+
+    /// Tool execution was cancelled.
+    ToolCancelled {
+        timestamp: DateTime<Utc>,
+        execution_id: String,
+        tool_name: String,
+    },
+
+    /// Tool execution timed out.
+    ToolTimedOut {
+        timestamp: DateTime<Utc>,
+        execution_id: String,
+        tool_name: String,
+        duration_ms: u64,
+    },
+
+    /// A file was created by a tool.
+    FileCreated {
+        timestamp: DateTime<Utc>,
+        path: PathBuf,
+        execution_id: String,
+    },
+
+    /// A file was modified by a tool.
+    FileModified {
+        timestamp: DateTime<Utc>,
+        path: PathBuf,
+        execution_id: String,
+    },
+
+    /// A file was deleted by a tool.
+    FileDeleted {
+        timestamp: DateTime<Utc>,
+        path: PathBuf,
+        execution_id: String,
+    },
+
+    /// A child process was started.
+    ProcessStarted {
+        timestamp: DateTime<Utc>,
+        executable: String,
+        arguments: Vec<String>,
+        execution_id: String,
+    },
+
+    /// A child process exited.
+    ProcessExited {
+        timestamp: DateTime<Utc>,
+        executable: String,
+        exit_code: Option<i32>,
+        execution_id: String,
+    },
+
+    /// An environment variable was modified.
+    EnvironmentChanged {
+        timestamp: DateTime<Utc>,
+        key: String,
+        execution_id: String,
     },
 }
 
@@ -201,7 +378,28 @@ impl HadesEvent {
         }
     }
 
-    /// Creates an `ErrorOccurred` event at the current time.
+    /// Creates a `SessionCreated` event.
+    pub fn session_created(session_id: impl Into<String>, title: impl Into<String>) -> Self {
+        Self::SessionCreated {
+            timestamp: Utc::now(),
+            session_id: session_id.into(),
+            title: title.into(),
+        }
+    }
+
+    /// Creates a `SessionSwitched` event.
+    pub fn session_switched(
+        from_session_id: Option<String>,
+        to_session_id: impl Into<String>,
+    ) -> Self {
+        Self::SessionSwitched {
+            timestamp: Utc::now(),
+            from_session_id,
+            to_session_id: to_session_id.into(),
+        }
+    }
+
+    /// Creates a `ErrorOccurred` event at the current time.
     pub fn error_occurred(error: impl Into<String>) -> Self {
         Self::ErrorOccurred {
             timestamp: Utc::now(),
@@ -229,7 +427,30 @@ impl HadesEvent {
             Self::ModelResponseStarted { timestamp, .. } => *timestamp,
             Self::ModelResponseCompleted { timestamp, .. } => *timestamp,
             Self::ProviderErrorOccurred { timestamp, .. } => *timestamp,
+            Self::SessionCreated { timestamp, .. } => *timestamp,
+            Self::SessionSwitched { timestamp, .. } => *timestamp,
+            Self::SessionDeleted { timestamp, .. } => *timestamp,
+            Self::SessionRenamed { timestamp, .. } => *timestamp,
+            Self::ModelSwitched { timestamp, .. } => *timestamp,
+            Self::ContextTruncated { timestamp, .. } => *timestamp,
+            Self::MessagePersisted { timestamp, .. } => *timestamp,
             Self::ErrorOccurred { timestamp, .. } => *timestamp,
+            Self::WorkspaceDetected { timestamp, .. } => *timestamp,
+            Self::ToolRequested { timestamp, .. } => *timestamp,
+            Self::ToolApprovalRequested { timestamp, .. } => *timestamp,
+            Self::ToolApproved { timestamp, .. } => *timestamp,
+            Self::ToolDenied { timestamp, .. } => *timestamp,
+            Self::ToolStarted { timestamp, .. } => *timestamp,
+            Self::ToolCompleted { timestamp, .. } => *timestamp,
+            Self::ToolFailed { timestamp, .. } => *timestamp,
+            Self::ToolCancelled { timestamp, .. } => *timestamp,
+            Self::ToolTimedOut { timestamp, .. } => *timestamp,
+            Self::FileCreated { timestamp, .. } => *timestamp,
+            Self::FileModified { timestamp, .. } => *timestamp,
+            Self::FileDeleted { timestamp, .. } => *timestamp,
+            Self::ProcessStarted { timestamp, .. } => *timestamp,
+            Self::ProcessExited { timestamp, .. } => *timestamp,
+            Self::EnvironmentChanged { timestamp, .. } => *timestamp,
         }
     }
 }

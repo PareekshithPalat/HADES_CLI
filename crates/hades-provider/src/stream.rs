@@ -3,7 +3,7 @@ use serde::{Deserialize, Serialize};
 use std::pin::Pin;
 
 use crate::error::ProviderError;
-use crate::request::{FinishReason, Usage};
+use crate::request::{FinishReason, ProviderToolCall, Usage};
 
 /// Normalized asynchronous stream chunk emitted during incremental token generation.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -13,6 +13,17 @@ pub enum StreamEvent {
 
     /// Text chunk / delta produced by the model.
     Delta(String),
+
+    /// Streaming fragment of a structured tool call.
+    ToolCallChunk {
+        index: usize,
+        id: Option<String>,
+        name: Option<String>,
+        arguments_chunk: String,
+    },
+
+    /// Fully accumulated list of structured tool calls ready for evaluation/execution.
+    ToolCallsReady(Vec<ProviderToolCall>),
 
     /// Token consumption accounting update.
     Usage(Usage),

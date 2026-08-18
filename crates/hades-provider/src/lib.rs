@@ -18,7 +18,8 @@ pub use manager::ModelManager;
 pub use model::{Model, PricingMetadata};
 pub use provider::{Provider, ProviderMetadata};
 pub use request::{
-    ChatMessage, CompletionRequest, CompletionResponse, FinishReason, MessageRole, Usage,
+    ChatMessage, CompletionRequest, CompletionResponse, FinishReason, MessageRole,
+    ProviderToolCall, ToolCallFunction, ToolDefinitionPayload, ToolFunctionDefinition, Usage,
 };
 pub use stream::{StreamEvent, StreamResult};
 
@@ -163,6 +164,7 @@ mod tests {
             id: "chat-123".to_string(),
             model: "gpt-4o".to_string(),
             content: "Hello user!".to_string(),
+            tool_calls: Vec::new(),
             finish_reason: Some(FinishReason::Stop),
             usage: Some(usage),
         };
@@ -232,6 +234,7 @@ mod tests {
                 id: "mock-123".to_string(),
                 model: request.model,
                 content: self.mock_response.clone(),
+                tool_calls: Vec::new(),
                 finish_reason: Some(FinishReason::Stop),
                 usage: Some(Usage::new(Some(5), Some(10), Some(15))),
             })
@@ -263,6 +266,7 @@ mod tests {
                 default_endpoint: None,
                 supports_dynamic_model_discovery: true,
                 requires_api_key: true,
+                is_local: false,
             },
             should_fail_auth: false,
             models: vec![Model::new("mock-model-1", "mock", "Mock Model 1")],
@@ -287,6 +291,7 @@ mod tests {
                 default_endpoint: None,
                 supports_dynamic_model_discovery: true,
                 requires_api_key: true,
+                is_local: false,
             },
             should_fail_auth: true,
             models: vec![],
@@ -308,6 +313,53 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn test_mock_local_ollama_discovery_and_verification_without_api_key() {
+        let ollama_provider = Arc::new(MockProvider {
+            metadata: ProviderMetadata {
+                id: "ollama".to_string(),
+                name: "Ollama (Local)".to_string(),
+                description: "Local inference".to_string(),
+                default_endpoint: Some("http://localhost:11434/v1".to_string()),
+                supports_dynamic_model_discovery: true,
+                requires_api_key: false,
+                is_local: true,
+            },
+            should_fail_auth: false,
+            models: vec![
+                Model::new("llama3.2:latest", "ollama", "Llama 3.2"),
+                Model::new("qwen2.5-coder:7b", "ollama", "Qwen 2.5 Coder"),
+            ],
+            mock_response: "Local response".to_string(),
+        });
+
+        let mut manager = ModelManager::new();
+        manager.register_provider(ollama_provider);
+
+        // Discovery without API key
+        let cred = Credential::with_endpoint("ollama", "http://localhost:11434/v1", None);
+        let models = manager
+            .discover_models("ollama", &cred)
+            .await
+            .expect("discover");
+        assert_eq!(models.len(), 2);
+        assert_eq!(models[0].id, "llama3.2:latest");
+        assert_eq!(models[1].id, "qwen2.5-coder:7b");
+
+        // Verification without API key
+        let verified = manager
+            .verify_provider_and_model("ollama", "llama3.2:latest", &cred)
+            .await
+            .expect("verify local model");
+        assert_eq!(verified.id, "llama3.2:latest");
+
+        // Attempting to verify uninstalled model fails with clear not-found error
+        let missing = manager
+            .verify_provider_and_model("ollama", "nonexistent-model", &cred)
+            .await;
+        assert!(missing.is_err());
+    }
+
+    #[tokio::test]
     async fn test_mock_provider_complete_and_streaming() {
         use futures::StreamExt;
 
@@ -319,6 +371,7 @@ mod tests {
                 default_endpoint: None,
                 supports_dynamic_model_discovery: true,
                 requires_api_key: false,
+                is_local: false,
             },
             should_fail_auth: false,
             models: vec![Model::new("mock-model", "mock", "Mock Model")],
@@ -348,5 +401,46 @@ mod tests {
             }
         }
         assert_eq!(full_text, "Mock response");
+    }
+
+    #[test]
+    fn test_tool_calling_payload_and_message_schemas() {
+        let tool_payload = ToolDefinitionPayload::function(
+            "filesystem.read",
+            "Reads the entire contents of a UTF-8 encoded text file within the workspace bounds.",
+            serde_json::json!({
+                "type": "object",
+                "properties": {
+                    "path": { "type": "string", "description": "Relative workspace path" }
+                },
+                "required": ["path"]
+            }),
+        );
+
+        assert_eq!(tool_payload.tool_type, "function");
+        assert_eq!(tool_payload.function.name, "filesystem.read");
+
+        let tc =
+            ProviderToolCall::function("call_123", "filesystem.read", r#"{"path":"Cargo.toml"}"#);
+        assert_eq!(tc.id, "call_123");
+        assert_eq!(tc.function.name, "filesystem.read");
+        assert_eq!(tc.function.arguments, r#"{"path":"Cargo.toml"}"#);
+
+        let assistant_tc_msg = ChatMessage::assistant_with_tools(None, vec![tc]);
+        assert_eq!(assistant_tc_msg.role, MessageRole::Assistant);
+        assert!(assistant_tc_msg.tool_calls.is_some());
+        assert_eq!(assistant_tc_msg.tool_calls.as_ref().unwrap().len(), 1);
+
+        let tool_res_msg = ChatMessage::tool_result("call_123", "[package]\nname = \"hades\"");
+        assert_eq!(tool_res_msg.role, MessageRole::Tool);
+        assert_eq!(tool_res_msg.tool_call_id.as_deref(), Some("call_123"));
+        assert_eq!(
+            tool_res_msg.content.as_deref(),
+            Some("[package]\nname = \"hades\"")
+        );
+
+        let serialized = serde_json::to_string(&tool_res_msg).expect("serialize");
+        assert!(serialized.contains(r#""role":"tool""#));
+        assert!(serialized.contains(r#""tool_call_id":"call_123""#));
     }
 }

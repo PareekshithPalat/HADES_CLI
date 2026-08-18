@@ -22,4 +22,8 @@ pub struct CliArgs {
     /// Custom directory for log files (defaults to ~/.hades/logs)
     #[arg(short, long, value_name = "DIR")]
     pub log_dir: Option<PathBuf>,
+
+    /// Explicitly resume a previous conversation session by ID
+    #[arg(short, long, value_name = "SESSION_ID")]
+    pub session: Option<String>,
 }

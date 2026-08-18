@@ -14,6 +14,15 @@ pub enum AppState {
     /// Interactive command palette overlay is open and capturing input.
     CommandPalette,
 
+    /// Interactive session selection / switcher screen.
+    SessionSelect,
+
+    /// Modal input dialog to rename the selected session.
+    SessionRename,
+
+    /// Modal confirmation dialog to delete the selected session.
+    SessionDeleteConfirm,
+
     /// Interactive provider selection screen.
     ProviderSelect,
 
@@ -38,6 +47,9 @@ pub enum AppState {
     /// AI streaming generation in progress, actively receiving tokens.
     AiStreaming,
 
+    /// Explicit user authorization required for tool execution.
+    ToolApproval,
+
     /// Graceful shutdown in progress (flushing state, releasing resources).
     ShuttingDown,
 
@@ -56,19 +68,40 @@ impl AppState {
 
             // From Running
             (AppState::Running, AppState::CommandPalette) => true,
+            (AppState::Running, AppState::SessionSelect) => true,
             (AppState::Running, AppState::ProviderSelect) => true,
             (AppState::Running, AppState::AiThinking) => true,
             (AppState::Running, AppState::AiStreaming) => true,
+            (AppState::Running, AppState::ToolApproval) => true,
             (AppState::Running, AppState::ShuttingDown) => true,
 
             // From CommandPalette
             (AppState::CommandPalette, AppState::Running) => true,
+            (AppState::CommandPalette, AppState::SessionSelect) => true,
             (AppState::CommandPalette, AppState::ProviderSelect) => true,
             (AppState::CommandPalette, AppState::ShuttingDown) => true,
+
+            // From SessionSelect
+            (AppState::SessionSelect, AppState::Running) => true,
+            (AppState::SessionSelect, AppState::SessionRename) => true,
+            (AppState::SessionSelect, AppState::SessionDeleteConfirm) => true,
+            (AppState::SessionSelect, AppState::CommandPalette) => true,
+            (AppState::SessionSelect, AppState::ShuttingDown) => true,
+
+            // From SessionRename
+            (AppState::SessionRename, AppState::SessionSelect) => true,
+            (AppState::SessionRename, AppState::Running) => true,
+            (AppState::SessionRename, AppState::ShuttingDown) => true,
+
+            // From SessionDeleteConfirm
+            (AppState::SessionDeleteConfirm, AppState::SessionSelect) => true,
+            (AppState::SessionDeleteConfirm, AppState::Running) => true,
+            (AppState::SessionDeleteConfirm, AppState::ShuttingDown) => true,
 
             // From ProviderSelect
             (AppState::ProviderSelect, AppState::Running) => true,
             (AppState::ProviderSelect, AppState::ModelSelect) => true,
+            (AppState::ProviderSelect, AppState::SessionSelect) => true,
             (AppState::ProviderSelect, AppState::CommandPalette) => true,
             (AppState::ProviderSelect, AppState::ShuttingDown) => true,
 
@@ -108,12 +141,20 @@ impl AppState {
 
             // From AiThinking
             (AppState::AiThinking, AppState::AiStreaming) => true,
+            (AppState::AiThinking, AppState::ToolApproval) => true,
             (AppState::AiThinking, AppState::Running) => true,
             (AppState::AiThinking, AppState::ShuttingDown) => true,
 
             // From AiStreaming
+            (AppState::AiStreaming, AppState::ToolApproval) => true,
             (AppState::AiStreaming, AppState::Running) => true,
             (AppState::AiStreaming, AppState::ShuttingDown) => true,
+
+            // From ToolApproval
+            (AppState::ToolApproval, AppState::Running) => true,
+            (AppState::ToolApproval, AppState::AiThinking) => true,
+            (AppState::ToolApproval, AppState::AiStreaming) => true,
+            (AppState::ToolApproval, AppState::ShuttingDown) => true,
 
             // From ShuttingDown
             (AppState::ShuttingDown, AppState::Exited) => true,

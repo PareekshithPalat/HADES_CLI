@@ -19,6 +19,27 @@ pub enum KeyActionResult {
     /// User initiated provider credential and model verification.
     VerifyModel,
 
+    /// User requested starting a brand new conversation session.
+    NewSession,
+
+    /// User requested opening the session switcher modal.
+    OpenSessionPicker,
+
+    /// User selected a session from the session switcher modal.
+    SelectSession(String),
+
+    /// User confirmed renaming a session.
+    RenameSession {
+        session_id: String,
+        new_title: String,
+    },
+
+    /// User confirmed deleting a session.
+    DeleteSession(String),
+
+    /// User resolved a tool approval request.
+    ResolveToolApproval(hades_tools::ApprovalDecision),
+
     /// Application should initiate graceful shutdown and terminate.
     Quit,
 }
@@ -45,6 +66,11 @@ impl InputHandler {
         match app.state() {
             AppState::Running => Self::handle_running(key_event, app, tui_state),
             AppState::CommandPalette => Self::handle_command_palette(key_event, app, tui_state),
+            AppState::SessionSelect => Self::handle_session_select(key_event, app, tui_state),
+            AppState::SessionRename => Self::handle_session_rename(key_event, app, tui_state),
+            AppState::SessionDeleteConfirm => {
+                Self::handle_session_delete_confirm(key_event, app, tui_state)
+            }
             AppState::ProviderSelect => Self::handle_provider_select(key_event, app, tui_state),
             AppState::ModelSelect => Self::handle_model_select(key_event, app, tui_state),
             AppState::ModelInfo => Self::handle_model_info(key_event, app, tui_state),
@@ -52,6 +78,7 @@ impl InputHandler {
             AppState::VerificationFailed => {
                 Self::handle_verification_failed(key_event, app, tui_state)
             }
+            AppState::ToolApproval => Self::handle_tool_approval(key_event, app, tui_state),
             _ => Ok(KeyActionResult::Handled),
         }
     }
@@ -106,19 +133,33 @@ impl InputHandler {
                 if input.starts_with('/') {
                     // Execute CLI slash command
                     match app.execute_command(&input) {
-                        Ok(output) => {
-                            if matches!(output, CommandOutput::OpenModelSetup) {
+                        Ok(output) => match output {
+                            CommandOutput::OpenModelSetup => {
+                                tui_state.is_model_switch_flow = false;
                                 tui_state.providers = app.model_manager().list_providers();
                                 tui_state.selected_provider_index = 0;
-                            } else {
-                                tui_state.set_output(output);
+                                Ok(KeyActionResult::Handled)
                             }
-                        }
+                            CommandOutput::OpenModelSwitch => {
+                                tui_state.is_model_switch_flow = true;
+                                tui_state.providers = app.model_manager().list_providers();
+                                tui_state.selected_provider_index = 0;
+                                Ok(KeyActionResult::Handled)
+                            }
+                            CommandOutput::NewSession => Ok(KeyActionResult::NewSession),
+                            CommandOutput::OpenSessionPicker => {
+                                Ok(KeyActionResult::OpenSessionPicker)
+                            }
+                            _ => {
+                                tui_state.set_output(output);
+                                Ok(KeyActionResult::Handled)
+                            }
+                        },
                         Err(e) => {
                             tui_state.set_error(e.to_string());
+                            Ok(KeyActionResult::Handled)
                         }
                     }
-                    Ok(KeyActionResult::Handled)
                 } else {
                     // Add new user turn immediately to conversation stream
                     tui_state.turns.push(ChatTurn::new(&input));
@@ -231,26 +272,204 @@ impl InputHandler {
 
                     app.transition_to(AppState::Running)?;
                     match app.execute_command(&cmd_name) {
-                        Ok(output) => {
-                            if matches!(output, CommandOutput::OpenModelSetup) {
+                        Ok(output) => match output {
+                            CommandOutput::OpenModelSetup => {
+                                tui_state.is_model_switch_flow = false;
                                 tui_state.providers = app.model_manager().list_providers();
                                 tui_state.selected_provider_index = 0;
-                            } else if matches!(output, CommandOutput::Exit) {
-                                return Ok(KeyActionResult::Quit);
-                            } else {
-                                tui_state.set_output(output);
+                                Ok(KeyActionResult::Handled)
                             }
-                        }
+                            CommandOutput::OpenModelSwitch => {
+                                tui_state.is_model_switch_flow = true;
+                                tui_state.providers = app.model_manager().list_providers();
+                                tui_state.selected_provider_index = 0;
+                                Ok(KeyActionResult::Handled)
+                            }
+                            CommandOutput::NewSession => Ok(KeyActionResult::NewSession),
+                            CommandOutput::OpenSessionPicker => {
+                                Ok(KeyActionResult::OpenSessionPicker)
+                            }
+                            CommandOutput::Exit => Ok(KeyActionResult::Quit),
+                            _ => {
+                                tui_state.set_output(output);
+                                Ok(KeyActionResult::Handled)
+                            }
+                        },
                         Err(e) => {
                             tui_state.set_error(e.to_string());
+                            Ok(KeyActionResult::Handled)
                         }
                     }
+                } else {
+                    Ok(KeyActionResult::Handled)
+                }
+            }
+            KeyCode::Esc => {
+                app.transition_to(AppState::Running)?;
+                Ok(KeyActionResult::Handled)
+            }
+            _ => Ok(KeyActionResult::Handled),
+        }
+    }
+
+    fn handle_session_select(
+        key_event: KeyEvent,
+        app: &mut HadesApp,
+        tui_state: &mut TuiState,
+    ) -> Result<KeyActionResult, CoreError> {
+        let count = tui_state.sessions.len();
+
+        match key_event.code {
+            KeyCode::Up => {
+                if count > 0 {
+                    tui_state.selected_session_index = if tui_state.selected_session_index == 0 {
+                        count - 1
+                    } else {
+                        tui_state.selected_session_index - 1
+                    };
+                }
+                Ok(KeyActionResult::Handled)
+            }
+            KeyCode::Down => {
+                if count > 0 {
+                    tui_state.selected_session_index =
+                        (tui_state.selected_session_index + 1) % count;
+                }
+                Ok(KeyActionResult::Handled)
+            }
+            KeyCode::Enter => {
+                if let Some(session) = tui_state.sessions.get(tui_state.selected_session_index) {
+                    let sid = session.id.clone();
+                    Ok(KeyActionResult::SelectSession(sid))
+                } else {
+                    app.transition_to(AppState::Running)?;
+                    Ok(KeyActionResult::Handled)
+                }
+            }
+            KeyCode::Char('r') | KeyCode::Char('R') | KeyCode::Char('e') | KeyCode::Char('E') => {
+                if let Some(session) = tui_state.sessions.get(tui_state.selected_session_index) {
+                    tui_state.rename_session_id = Some(session.id.clone());
+                    tui_state.rename_input = session.title.clone();
+                    tui_state.rename_cursor_position = tui_state.rename_input.len();
+                    app.transition_to(AppState::SessionRename)?;
+                }
+                Ok(KeyActionResult::Handled)
+            }
+            KeyCode::Char('d') | KeyCode::Char('D') | KeyCode::Delete => {
+                if let Some(session) = tui_state.sessions.get(tui_state.selected_session_index) {
+                    tui_state.delete_session_id = Some(session.id.clone());
+                    tui_state.delete_session_title = session.title.clone();
+                    tui_state.delete_confirm_action = 0; // 0 = Delete, 1 = Cancel
+                    app.transition_to(AppState::SessionDeleteConfirm)?;
                 }
                 Ok(KeyActionResult::Handled)
             }
             KeyCode::Esc => {
                 app.transition_to(AppState::Running)?;
                 Ok(KeyActionResult::Handled)
+            }
+            _ => Ok(KeyActionResult::Handled),
+        }
+    }
+
+    fn handle_session_rename(
+        key_event: KeyEvent,
+        app: &mut HadesApp,
+        tui_state: &mut TuiState,
+    ) -> Result<KeyActionResult, CoreError> {
+        match key_event.code {
+            KeyCode::Char(c) => {
+                let idx = tui_state.rename_cursor_position;
+                if idx >= tui_state.rename_input.len() {
+                    tui_state.rename_input.push(c);
+                } else {
+                    tui_state.rename_input.insert(idx, c);
+                }
+                tui_state.rename_cursor_position += 1;
+                Ok(KeyActionResult::Handled)
+            }
+            KeyCode::Backspace => {
+                if tui_state.rename_cursor_position > 0 {
+                    tui_state.rename_cursor_position -= 1;
+                    if tui_state.rename_cursor_position < tui_state.rename_input.len() {
+                        tui_state
+                            .rename_input
+                            .remove(tui_state.rename_cursor_position);
+                    }
+                }
+                Ok(KeyActionResult::Handled)
+            }
+            KeyCode::Left => {
+                if tui_state.rename_cursor_position > 0 {
+                    tui_state.rename_cursor_position -= 1;
+                }
+                Ok(KeyActionResult::Handled)
+            }
+            KeyCode::Right => {
+                if tui_state.rename_cursor_position < tui_state.rename_input.len() {
+                    tui_state.rename_cursor_position += 1;
+                }
+                Ok(KeyActionResult::Handled)
+            }
+            KeyCode::Enter => {
+                let trimmed = tui_state.rename_input.trim();
+                if !trimmed.is_empty() {
+                    if let Some(ref sid) = tui_state.rename_session_id {
+                        let sid = sid.clone();
+                        let title = trimmed.to_string();
+                        return Ok(KeyActionResult::RenameSession {
+                            session_id: sid,
+                            new_title: title,
+                        });
+                    }
+                }
+                app.transition_to(AppState::SessionSelect)?;
+                Ok(KeyActionResult::Handled)
+            }
+            KeyCode::Esc => {
+                app.transition_to(AppState::SessionSelect)?;
+                Ok(KeyActionResult::Handled)
+            }
+            _ => Ok(KeyActionResult::Handled),
+        }
+    }
+
+    fn handle_session_delete_confirm(
+        key_event: KeyEvent,
+        app: &mut HadesApp,
+        tui_state: &mut TuiState,
+    ) -> Result<KeyActionResult, CoreError> {
+        match key_event.code {
+            KeyCode::Left | KeyCode::Right | KeyCode::Tab => {
+                tui_state.delete_confirm_action = 1 - tui_state.delete_confirm_action;
+                Ok(KeyActionResult::Handled)
+            }
+            KeyCode::Char('y') | KeyCode::Char('Y') => {
+                if let Some(ref sid) = tui_state.delete_session_id {
+                    let sid = sid.clone();
+                    Ok(KeyActionResult::DeleteSession(sid))
+                } else {
+                    app.transition_to(AppState::SessionSelect)?;
+                    Ok(KeyActionResult::Handled)
+                }
+            }
+            KeyCode::Char('n') | KeyCode::Char('N') | KeyCode::Esc => {
+                app.transition_to(AppState::SessionSelect)?;
+                Ok(KeyActionResult::Handled)
+            }
+            KeyCode::Enter => {
+                if tui_state.delete_confirm_action == 0 {
+                    if let Some(ref sid) = tui_state.delete_session_id {
+                        let sid = sid.clone();
+                        Ok(KeyActionResult::DeleteSession(sid))
+                    } else {
+                        app.transition_to(AppState::SessionSelect)?;
+                        Ok(KeyActionResult::Handled)
+                    }
+                } else {
+                    app.transition_to(AppState::SessionSelect)?;
+                    Ok(KeyActionResult::Handled)
+                }
             }
             _ => Ok(KeyActionResult::Handled),
         }
@@ -342,12 +561,23 @@ impl InputHandler {
     fn handle_model_info(
         key_event: KeyEvent,
         app: &mut HadesApp,
-        _tui_state: &mut TuiState,
+        tui_state: &mut TuiState,
     ) -> Result<KeyActionResult, CoreError> {
         match key_event.code {
             KeyCode::Enter => {
-                app.transition_to(AppState::CredentialInput)?;
-                Ok(KeyActionResult::Handled)
+                let requires_api_key = tui_state
+                    .providers
+                    .get(tui_state.selected_provider_index)
+                    .map(|p| p.requires_api_key)
+                    .unwrap_or(true);
+
+                if !requires_api_key {
+                    app.transition_to(AppState::Verifying)?;
+                    Ok(KeyActionResult::VerifyModel)
+                } else {
+                    app.transition_to(AppState::CredentialInput)?;
+                    Ok(KeyActionResult::Handled)
+                }
             }
             KeyCode::Esc => {
                 app.transition_to(AppState::ModelSelect)?;
@@ -422,6 +652,53 @@ impl InputHandler {
             KeyCode::Esc => {
                 app.transition_to(AppState::ModelSelect)?;
                 Ok(KeyActionResult::Handled)
+            }
+            _ => Ok(KeyActionResult::Handled),
+        }
+    }
+
+    fn handle_tool_approval(
+        key_event: KeyEvent,
+        _app: &mut HadesApp,
+        tui_state: &mut TuiState,
+    ) -> Result<KeyActionResult, CoreError> {
+        match key_event.code {
+            KeyCode::Left | KeyCode::BackTab => {
+                tui_state.tool_approval_selection = if tui_state.tool_approval_selection == 0 {
+                    3
+                } else {
+                    tui_state.tool_approval_selection - 1
+                };
+                Ok(KeyActionResult::Handled)
+            }
+            KeyCode::Right | KeyCode::Tab => {
+                tui_state.tool_approval_selection = (tui_state.tool_approval_selection + 1) % 4;
+                Ok(KeyActionResult::Handled)
+            }
+            KeyCode::Char('y') | KeyCode::Char('Y') => Ok(KeyActionResult::ResolveToolApproval(
+                hades_tools::ApprovalDecision::AllowOnce,
+            )),
+            KeyCode::Char('s') | KeyCode::Char('S') | KeyCode::Char('a') | KeyCode::Char('A') => {
+                Ok(KeyActionResult::ResolveToolApproval(
+                    hades_tools::ApprovalDecision::AllowSession,
+                ))
+            }
+            KeyCode::Char('d') | KeyCode::Char('D') | KeyCode::Char('n') | KeyCode::Char('N') => {
+                Ok(KeyActionResult::ResolveToolApproval(
+                    hades_tools::ApprovalDecision::Deny,
+                ))
+            }
+            KeyCode::Esc => Ok(KeyActionResult::ResolveToolApproval(
+                hades_tools::ApprovalDecision::Cancel,
+            )),
+            KeyCode::Enter => {
+                let decision = match tui_state.tool_approval_selection {
+                    0 => hades_tools::ApprovalDecision::AllowOnce,
+                    1 => hades_tools::ApprovalDecision::AllowSession,
+                    2 => hades_tools::ApprovalDecision::Deny,
+                    _ => hades_tools::ApprovalDecision::Cancel,
+                };
+                Ok(KeyActionResult::ResolveToolApproval(decision))
             }
             _ => Ok(KeyActionResult::Handled),
         }

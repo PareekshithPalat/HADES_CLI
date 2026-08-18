@@ -424,6 +424,10 @@ mod tests {
         ConversationPrinter::print_command_output(&CommandOutput::Status(StatusInfo {
             application: "Hades".into(),
             version: "0.1.0".into(),
+            session_id: "test-sess-1".into(),
+            session_title: "Test Session".into(),
+            messages: 4,
+            context_usage: "120 / 32,768 (Estimated)".into(),
             model: "Not configured".into(),
             mode: "simple".into(),
             storage_status: "Healthy".into(),
@@ -628,5 +632,168 @@ mod tests {
         assert_eq!(state.scroll_offset, 50);
         assert!(state.auto_scroll_to_bottom);
         assert!(!state.has_new_content_below);
+    }
+
+    #[test]
+    fn test_reconstruct_turns_from_session() {
+        let mut state = TuiState::new();
+        let mut session = hades_storage::SessionRecord::new(
+            Some("Test Session".to_string()),
+            Some("openai".to_string()),
+            Some("gpt-4o".to_string()),
+        );
+
+        let msg1 = hades_storage::Message::user(&session.metadata.id, "First user query");
+        let msg2 = hades_storage::Message::assistant(
+            &session.metadata.id,
+            "First assistant response",
+            Some("openai".to_string()),
+            Some("gpt-4o".to_string()),
+        );
+        let msg3 = hades_storage::Message::user(&session.metadata.id, "Second user query");
+
+        session.add_message(msg1);
+        session.add_message(msg2);
+        session.add_message(msg3);
+
+        state.reconstruct_turns_from_session(&session);
+
+        assert_eq!(state.turns.len(), 2);
+        assert_eq!(state.turns[0].user_prompt, "First user query");
+        assert_eq!(
+            state.turns[0].assistant_response.as_deref(),
+            Some("First assistant response")
+        );
+        assert_eq!(state.turns[1].user_prompt, "Second user query");
+        assert_eq!(state.turns[1].assistant_response, None);
+    }
+
+    #[test]
+    fn test_session_select_keyboard_navigation() {
+        let (mut app, _dir) = create_test_app();
+        let mut state = TuiState::new();
+
+        state.sessions = vec![
+            hades_storage::SessionMetadata::new(
+                "s1",
+                "Session One",
+                Some("openai".to_string()),
+                Some("gpt-4o".to_string()),
+            ),
+            hades_storage::SessionMetadata::new(
+                "s2",
+                "Session Two",
+                Some("groq".to_string()),
+                Some("llama-3.3-70b-versatile".to_string()),
+            ),
+        ];
+        state.selected_session_index = 0;
+        app.transition_to(AppState::SessionSelect).unwrap();
+
+        // Down arrow
+        let res =
+            InputHandler::handle_key_event(make_key(KeyCode::Down), &mut app, &mut state).unwrap();
+        assert_eq!(res, KeyActionResult::Handled);
+        assert_eq!(state.selected_session_index, 1);
+
+        // Enter key selects session
+        let res =
+            InputHandler::handle_key_event(make_key(KeyCode::Enter), &mut app, &mut state).unwrap();
+        assert_eq!(res, KeyActionResult::SelectSession("s2".to_string()));
+    }
+
+    #[test]
+    fn test_session_rename_keyboard_flow() {
+        let (mut app, _dir) = create_test_app();
+        let mut state = TuiState::new();
+
+        state.sessions = vec![hades_storage::SessionMetadata::new(
+            "s1",
+            "Initial Title",
+            None,
+            None,
+        )];
+        state.selected_session_index = 0;
+        app.transition_to(AppState::SessionSelect).unwrap();
+
+        // Press 'r' to open rename modal
+        let res =
+            InputHandler::handle_key_event(make_key(KeyCode::Char('r')), &mut app, &mut state)
+                .unwrap();
+        assert_eq!(res, KeyActionResult::Handled);
+        assert_eq!(app.state(), AppState::SessionRename);
+        assert_eq!(state.rename_input, "Initial Title");
+
+        // Clear and type new title
+        state.rename_input = "Brand New Title".to_string();
+        state.rename_cursor_position = state.rename_input.len();
+
+        // Press Enter to confirm rename
+        let res =
+            InputHandler::handle_key_event(make_key(KeyCode::Enter), &mut app, &mut state).unwrap();
+        assert_eq!(
+            res,
+            KeyActionResult::RenameSession {
+                session_id: "s1".to_string(),
+                new_title: "Brand New Title".to_string(),
+            }
+        );
+    }
+
+    #[test]
+    fn test_session_delete_confirm_keyboard_flow() {
+        let (mut app, _dir) = create_test_app();
+        let mut state = TuiState::new();
+
+        state.sessions = vec![hades_storage::SessionMetadata::new(
+            "s1",
+            "To Be Deleted",
+            None,
+            None,
+        )];
+        state.selected_session_index = 0;
+        app.transition_to(AppState::SessionSelect).unwrap();
+
+        // Press 'd' to open delete confirmation
+        let res =
+            InputHandler::handle_key_event(make_key(KeyCode::Char('d')), &mut app, &mut state)
+                .unwrap();
+        assert_eq!(res, KeyActionResult::Handled);
+        assert_eq!(app.state(), AppState::SessionDeleteConfirm);
+        assert_eq!(state.delete_session_title, "To Be Deleted");
+
+        // Press 'y' to confirm delete
+        let res =
+            InputHandler::handle_key_event(make_key(KeyCode::Char('y')), &mut app, &mut state)
+                .unwrap();
+        assert_eq!(res, KeyActionResult::DeleteSession("s1".to_string()));
+    }
+
+    #[test]
+    fn test_local_model_bypasses_credential_input() {
+        let (mut app, _dir) = create_test_app();
+        let mut state = TuiState::new();
+
+        // Register local provider with requires_api_key = false
+        state.providers = vec![hades_provider::ProviderMetadata {
+            id: "ollama".to_string(),
+            name: "Ollama (Local)".to_string(),
+            description: "Local inference".to_string(),
+            default_endpoint: Some("http://localhost:11434/v1".to_string()),
+            supports_dynamic_model_discovery: true,
+            requires_api_key: false,
+            is_local: true,
+        }];
+        state.selected_provider_index = 0;
+        state.selected_model = Some(Model::new("llama3.2:latest", "ollama", "Llama 3.2"));
+        app.transition_to(AppState::ProviderSelect).unwrap();
+        app.transition_to(AppState::ModelSelect).unwrap();
+        app.transition_to(AppState::ModelInfo).unwrap();
+
+        // Pressing Enter on ModelInfo for local model skips CredentialInput and goes straight to Verifying
+        let res =
+            InputHandler::handle_key_event(make_key(KeyCode::Enter), &mut app, &mut state).unwrap();
+        assert_eq!(res, KeyActionResult::VerifyModel);
+        assert_eq!(app.state(), AppState::Verifying);
     }
 }

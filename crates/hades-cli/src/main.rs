@@ -66,7 +66,7 @@ async fn main() {
     }
 
     // 7. Launch interactive terminal user interface
-    if let Err(e) = TuiRunner::run(&mut app).await {
+    if let Err(e) = TuiRunner::run(&mut app, args.session).await {
         error!(error = %e, "TUI encountered an unexpected error");
         eprintln!("TUI runtime error: {}", e);
         std::process::exit(1);

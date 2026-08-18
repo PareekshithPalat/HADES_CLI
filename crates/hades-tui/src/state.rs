@@ -1,5 +1,6 @@
 use hades_core::CommandOutput;
 use hades_provider::{Model, ProviderMetadata, Usage};
+use hades_storage::{MessageRole, SessionMetadata, SessionRecord};
 
 /// Represents a single chronological turn in the conversation stream.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -53,6 +54,16 @@ impl ChatTurn {
         self.activity_text = None;
         self.error_text = Some(error.into());
     }
+
+    /// Sets a transient activity text.
+    pub fn set_activity(&mut self, activity: impl Into<String>) {
+        self.activity_text = Some(activity.into());
+    }
+
+    /// Clears any transient activity text.
+    pub fn clear_activity(&mut self) {
+        self.activity_text = None;
+    }
 }
 
 /// Transient UI view state for rendering, scrolling, and input handling.
@@ -97,6 +108,34 @@ pub struct TuiState {
     /// Token usage metrics for the latest generation.
     pub current_usage: Option<Usage>,
 
+    // Session Management Fields
+    /// List of available sessions for the SessionSelect modal.
+    pub sessions: Vec<SessionMetadata>,
+
+    /// Selected session index in SessionSelect modal.
+    pub selected_session_index: usize,
+
+    /// Whether the active setup workflow was triggered by /switch rather than /model.
+    pub is_model_switch_flow: bool,
+
+    /// Session ID being renamed.
+    pub rename_session_id: Option<String>,
+
+    /// Buffer holding the new session title during rename.
+    pub rename_input: String,
+
+    /// Cursor position within rename input.
+    pub rename_cursor_position: usize,
+
+    /// Session ID targeted for deletion.
+    pub delete_session_id: Option<String>,
+
+    /// Session title targeted for deletion display.
+    pub delete_session_title: String,
+
+    /// Action index in delete confirmation modal (0 = Delete, 1 = Cancel).
+    pub delete_confirm_action: usize,
+
     // Provider Setup Workflow Fields
     /// List of available AI providers.
     pub providers: Vec<ProviderMetadata>,
@@ -130,6 +169,10 @@ pub struct TuiState {
 
     /// Selected action index on `VerificationFailed` screen (0 = Retry, 1 = Change Credential, 2 = Back).
     pub verification_action_index: usize,
+
+    // Tool Approval Modal Fields
+    /// Selected button index in ToolApproval modal (0 = Allow Once, 1 = Allow Session, 2 = Deny, 3 = Cancel).
+    pub tool_approval_selection: usize,
 }
 
 impl TuiState {
@@ -140,6 +183,55 @@ impl TuiState {
             has_new_content_below: false,
             ..Default::default()
         }
+    }
+
+    /// Reconstructs UI chat turns from a loaded persistent session record.
+    pub fn reconstruct_turns_from_session(&mut self, session: &SessionRecord) {
+        self.turns.clear();
+        let mut pending_user_prompt: Option<String> = None;
+
+        for msg in &session.messages {
+            match msg.role {
+                MessageRole::User => {
+                    if let Some(prompt) = pending_user_prompt.take() {
+                        self.turns.push(ChatTurn::new(prompt));
+                    }
+                    pending_user_prompt = Some(msg.content.clone());
+                }
+                MessageRole::Assistant => {
+                    let prompt = pending_user_prompt
+                        .take()
+                        .unwrap_or_else(|| "(Conversation)".to_string());
+                    self.turns
+                        .push(ChatTurn::with_response(prompt, &msg.content));
+                }
+                MessageRole::Error => {
+                    let prompt = pending_user_prompt
+                        .take()
+                        .unwrap_or_else(|| "(Conversation)".to_string());
+                    let mut turn = ChatTurn::new(prompt);
+                    turn.set_error(&msg.content);
+                    self.turns.push(turn);
+                }
+                MessageRole::Tool => {
+                    if let Some(last_turn) = self.turns.last_mut() {
+                        let tool_formatted = format!("\n\n[Tool Result]\n{}", msg.content);
+                        if let Some(resp) = &mut last_turn.assistant_response {
+                            resp.push_str(&tool_formatted);
+                        } else {
+                            last_turn.assistant_response = Some(tool_formatted);
+                        }
+                    }
+                }
+                MessageRole::System => {}
+            }
+        }
+
+        if let Some(prompt) = pending_user_prompt {
+            self.turns.push(ChatTurn::new(prompt));
+        }
+
+        self.scroll_to_bottom();
     }
 
     /// Sets an error message to display in the UI.

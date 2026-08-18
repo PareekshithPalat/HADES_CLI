@@ -28,6 +28,9 @@ pub struct ProviderMetadata {
 
     /// Whether authentication credentials (e.g. API keys) are required.
     pub requires_api_key: bool,
+
+    /// Whether this provider is a local inference engine (e.g. Ollama, local server) vs remote cloud API.
+    pub is_local: bool,
 }
 
 /// Core abstraction for AI model service providers.

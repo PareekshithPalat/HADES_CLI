@@ -1,13 +1,16 @@
 pub mod app;
 pub mod command;
+pub mod context;
 pub mod error;
 pub mod state;
 
 pub use app::{HadesApp, APP_VERSION};
 pub use command::{
     Command, CommandContext, CommandInfo, CommandOutput, CommandRegistry, ExitCommand, HelpCommand,
-    HelpEntry, ModelCommand, StatusCommand, StatusInfo,
+    HelpEntry, ModelCommand, NewSessionCommand, SessionsCommand, StatusCommand, StatusInfo,
+    SwitchCommand,
 };
+pub use context::{ContextManager, ContextReport, TokenEstimator, UsageKind};
 pub use error::{CommandError, CoreError};
 pub use state::AppState;
 
@@ -15,18 +18,29 @@ pub use state::AppState;
 mod tests {
     use super::*;
     use hades_config::ActiveModelConfig;
+    use hades_storage::{FileSessionRepository, Message};
     use tempfile::tempdir;
 
     fn create_test_app() -> (HadesApp, tempfile::TempDir) {
         let dir = tempdir().expect("create temp dir");
         let config_path = dir.path().join("config.toml");
         let storage_path = dir.path().join("data");
+        let sessions_path = dir.path().join("sessions");
 
         let config_service = hades_config::ConfigService::with_path(config_path);
         let storage_service = hades_storage::StorageService::with_root(storage_path);
+        let session_repo = std::sync::Arc::new(FileSessionRepository::with_dir(sessions_path));
         let event_bus = hades_events::EventBus::new();
 
-        let app = HadesApp::new(config_service, storage_service, event_bus);
+        let app = HadesApp::with_backends(
+            config_service,
+            storage_service,
+            event_bus,
+            std::sync::Arc::new(hades_provider::FileCredentialBackend::with_path(
+                dir.path().join("credentials.json"),
+            )),
+            session_repo,
+        );
         (app, dir)
     }
 
@@ -44,6 +58,7 @@ mod tests {
         let dir = tempdir().expect("create temp dir");
         let config_path = dir.path().join("config.toml");
         let storage_path = dir.path().join("data");
+        let sessions_path = dir.path().join("sessions");
 
         let config_service = hades_config::ConfigService::with_path(&config_path);
         let config = hades_config::HadesConfig {
@@ -53,9 +68,18 @@ mod tests {
         config_service.save(&config).expect("save config");
 
         let storage_service = hades_storage::StorageService::with_root(storage_path);
+        let session_repo = std::sync::Arc::new(FileSessionRepository::with_dir(sessions_path));
         let event_bus = hades_events::EventBus::new();
 
-        let mut app = HadesApp::new(config_service, storage_service, event_bus);
+        let mut app = HadesApp::with_backends(
+            config_service,
+            storage_service,
+            event_bus,
+            std::sync::Arc::new(hades_provider::FileCredentialBackend::with_path(
+                dir.path().join("credentials.json"),
+            )),
+            session_repo,
+        );
         app.init().expect("app init");
         assert_eq!(app.state(), AppState::Running);
         assert_eq!(app.active_model_display(), "openai/gpt-4o");
@@ -68,8 +92,12 @@ mod tests {
         assert!(AppState::Startup.can_transition_to(AppState::ShuttingDown));
 
         assert!(AppState::Running.can_transition_to(AppState::CommandPalette));
+        assert!(AppState::Running.can_transition_to(AppState::SessionSelect));
         assert!(AppState::Running.can_transition_to(AppState::ProviderSelect));
         assert!(AppState::Running.can_transition_to(AppState::ShuttingDown));
+
+        assert!(AppState::SessionSelect.can_transition_to(AppState::Running));
+        assert!(AppState::SessionSelect.can_transition_to(AppState::CommandPalette));
 
         assert!(AppState::ProviderSelect.can_transition_to(AppState::ModelSelect));
         assert!(AppState::ProviderSelect.can_transition_to(AppState::Running));
@@ -97,6 +125,9 @@ mod tests {
                 assert!(names.contains(&"/help".to_string()));
                 assert!(names.contains(&"/status".to_string()));
                 assert!(names.contains(&"/model".to_string()));
+                assert!(names.contains(&"/switch".to_string()));
+                assert!(names.contains(&"/new".to_string()));
+                assert!(names.contains(&"/sessions".to_string()));
                 assert!(names.contains(&"/exit".to_string()));
             }
             _ => panic!("Expected Help output"),
@@ -119,6 +150,7 @@ mod tests {
                 assert_eq!(status.mode, "Simple");
                 assert_eq!(status.storage_status, "Ready");
                 assert_eq!(status.config_status, "Ready");
+                assert_ne!(status.session_id, "");
             }
             _ => panic!("Expected Status output"),
         }
@@ -134,6 +166,41 @@ mod tests {
         let output = app.execute_command("/model").expect("execute /model");
         assert_eq!(output, CommandOutput::OpenModelSetup);
         assert_eq!(app.state(), AppState::ProviderSelect);
+    }
+
+    #[test]
+    fn test_switch_command_triggers_provider_select() {
+        let (mut app, _dir) = create_test_app();
+        app.init().expect("app init");
+        app.transition_to(AppState::Running)
+            .expect("transition to running");
+
+        let output = app.execute_command("/switch").expect("execute /switch");
+        assert_eq!(output, CommandOutput::OpenModelSwitch);
+        assert_eq!(app.state(), AppState::ProviderSelect);
+    }
+
+    #[test]
+    fn test_sessions_command_triggers_session_select() {
+        let (mut app, _dir) = create_test_app();
+        app.init().expect("app init");
+        app.transition_to(AppState::Running)
+            .expect("transition to running");
+
+        let output = app.execute_command("/sessions").expect("execute /sessions");
+        assert_eq!(output, CommandOutput::OpenSessionPicker);
+        assert_eq!(app.state(), AppState::SessionSelect);
+    }
+
+    #[test]
+    fn test_new_command_creates_new_session() {
+        let (mut app, _dir) = create_test_app();
+        app.init().expect("app init");
+        app.transition_to(AppState::Running)
+            .expect("transition to running");
+
+        let output = app.execute_command("/new").expect("execute /new");
+        assert_eq!(output, CommandOutput::NewSession);
     }
 
     #[test]
@@ -186,5 +253,208 @@ mod tests {
             .execute_command("/provider")
             .expect("execute alias /provider");
         assert_eq!(output_provider, CommandOutput::OpenModelSetup);
+
+        let output_history = app
+            .execute_command("/history")
+            .expect("execute alias /history");
+        assert_eq!(output_history, CommandOutput::OpenSessionPicker);
+    }
+
+    #[tokio::test]
+    async fn test_context_manager_truncation_and_preservation() {
+        let mut cm = ContextManager::new();
+        // Register small context limit for testing (e.g. 100 tokens)
+        cm.register_model_limit("test-small", 100);
+
+        let mut history = Vec::new();
+        for i in 0..10 {
+            let msg = Message::user(
+                "session-1",
+                format!(
+                    "Message number {} explaining complex system design concepts",
+                    i
+                ),
+            );
+            history.push(msg);
+        }
+
+        let current_prompt = "What is the summary?";
+        let (context_messages, report) = cm
+            .build_context(&history, "test-small", None, current_prompt)
+            .expect("build context");
+
+        assert!(report.was_truncated);
+        assert!(report.included_messages < history.len() + 1);
+        // Current prompt must ALWAYS be the last message
+        assert_eq!(
+            context_messages.last().unwrap().content.as_deref(),
+            Some(current_prompt)
+        );
+    }
+
+    #[tokio::test]
+    async fn test_session_switching_and_isolation() {
+        let (mut app, _dir) = create_test_app();
+        app.init().expect("init");
+
+        // 1. Create Session A
+        let s_a = app
+            .create_new_session(Some("Session A".to_string()))
+            .await
+            .expect("create A");
+        assert_eq!(s_a.metadata.title, "Session A");
+
+        // Add message to Session A
+        let msg_a = Message::user(&s_a.metadata.id, "Hello in session A");
+        if let Some(s) = app.active_session_mut() {
+            s.add_message(msg_a);
+        }
+
+        // 2. Create Session B
+        let s_b = app
+            .create_new_session(Some("Session B".to_string()))
+            .await
+            .expect("create B");
+        assert_eq!(s_b.metadata.title, "Session B");
+
+        // Add message to Session B
+        let msg_b = Message::user(&s_b.metadata.id, "Hello in session B");
+        if let Some(s) = app.active_session_mut() {
+            s.add_message(msg_b);
+        }
+
+        // 3. Switch back to Session A
+        let loaded_a = app
+            .switch_session(&s_a.metadata.id)
+            .await
+            .expect("switch to A");
+        assert_eq!(loaded_a.messages.len(), 1);
+        assert_eq!(loaded_a.messages[0].content, "Hello in session A");
+
+        // 4. Switch to Session B
+        let loaded_b = app
+            .switch_session(&s_b.metadata.id)
+            .await
+            .expect("switch to B");
+        assert_eq!(loaded_b.messages.len(), 1);
+        assert_eq!(loaded_b.messages[0].content, "Hello in session B");
+    }
+
+    #[tokio::test]
+    async fn test_normal_startup_creates_new_session_every_time() {
+        let (mut app, _dir) = create_test_app();
+        app.init().expect("init");
+
+        // First launch initializes session 1
+        app.init_session(None).await.expect("init session 1");
+        let id_1 = app.active_session().unwrap().metadata.id.clone();
+
+        // Normal second launch creates a completely new session (does not auto-restore id_1)
+        app.init_session(None).await.expect("init session 2");
+        let id_2 = app.active_session().unwrap().metadata.id.clone();
+
+        assert_ne!(id_1, id_2);
+
+        let sessions = app.list_sessions().await.expect("list sessions");
+        assert_eq!(sessions.len(), 2);
+    }
+
+    #[tokio::test]
+    async fn test_explicit_session_resumption_success_and_failure() {
+        let (mut app, _dir) = create_test_app();
+        app.init().expect("init");
+
+        // 1. Create a session and add messages
+        let s = app
+            .create_new_session(Some("Persistent Session".to_string()))
+            .await
+            .expect("create");
+        let sid = s.metadata.id.clone();
+        if let Some(active) = app.active_session_mut() {
+            active.add_message(Message::user(&sid, "Stored prompt"));
+        }
+        app.save_active_session().await.expect("save");
+
+        // 2. Explicitly resume that session
+        let warn = app.init_session(Some(&sid)).await.expect("explicit resume");
+        assert!(warn.is_none());
+        assert_eq!(app.active_session().unwrap().metadata.id, sid);
+        assert_eq!(app.active_session().unwrap().messages.len(), 1);
+        assert_eq!(
+            app.active_session().unwrap().messages[0].content,
+            "Stored prompt"
+        );
+
+        // 3. Explicitly resume a non-existent session
+        let warn_missing = app
+            .init_session(Some("non-existent-uuid"))
+            .await
+            .expect("missing session resume");
+        assert!(warn_missing.is_some());
+        assert!(warn_missing
+            .unwrap()
+            .contains("Hades could not find session: non-existent-uuid"));
+        // Hades remains in a valid usable state with a fresh session
+        assert!(app.active_session().is_some());
+        assert_ne!(
+            app.active_session().unwrap().metadata.id,
+            "non-existent-uuid"
+        );
+    }
+
+    #[tokio::test]
+    async fn test_session_rename_and_deletion_lifecycle() {
+        let (mut app, _dir) = create_test_app();
+        app.init().expect("init");
+
+        let s = app
+            .create_new_session(Some("Original Title".to_string()))
+            .await
+            .expect("create");
+        let sid = s.metadata.id.clone();
+
+        // Rename session
+        app.rename_session(&sid, "Updated Title")
+            .await
+            .expect("rename");
+        assert_eq!(
+            app.active_session().unwrap().metadata.title,
+            "Updated Title"
+        );
+
+        // Verify in storage
+        let loaded = app
+            .session_repository()
+            .get_session(&sid)
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(loaded.metadata.title, "Updated Title");
+
+        // Delete active session
+        let deleted = app.delete_session(&sid).await.expect("delete");
+        assert!(deleted);
+
+        // Active session automatically replaced by fresh new session
+        assert!(app.active_session().is_some());
+        assert_ne!(app.active_session().unwrap().metadata.id, sid);
+    }
+
+    #[tokio::test]
+    async fn test_agent_system_prompt_and_tool_payloads() {
+        let (mut app, _dir) = create_test_app();
+        app.init().expect("init");
+
+        let sys = app.build_system_prompt();
+        assert!(sys.contains("You are Hades"));
+        assert!(sys.contains("CURRENT WORKSPACE ENVIRONMENT:"));
+        assert!(sys.contains("TOOL USE POLICY & INSTRUCTIONS:"));
+
+        let tools = app.provider_tool_definitions();
+        assert!(!tools.is_empty());
+        assert!(tools.iter().any(|t| t.function.name == "filesystem.read"));
+        assert!(tools.iter().any(|t| t.function.name == "filesystem.list"));
+        assert!(tools.iter().any(|t| t.function.name == "filesystem.create"));
+        assert!(tools.iter().any(|t| t.function.name == "shell.execute"));
     }
 }

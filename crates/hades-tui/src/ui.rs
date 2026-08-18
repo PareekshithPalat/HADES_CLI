@@ -56,12 +56,16 @@ pub fn render(frame: &mut Frame, app: &HadesApp, state: &mut TuiState) {
     // Modal Overlays (Minimal, clean floating dialogs)
     match app.state() {
         AppState::CommandPalette => render_command_palette(frame, app, state, size),
+        AppState::SessionSelect => render_session_select(frame, state, size),
+        AppState::SessionRename => render_session_rename(frame, state, size),
+        AppState::SessionDeleteConfirm => render_session_delete_confirm(frame, state, size),
         AppState::ProviderSelect => render_provider_select(frame, state, size),
         AppState::ModelSelect => render_model_select(frame, state, size),
         AppState::ModelInfo => render_model_info(frame, state, size),
         AppState::CredentialInput => render_credential_input(frame, state, size),
         AppState::Verifying => render_verifying(frame, state, size),
         AppState::VerificationFailed => render_verification_failed(frame, state, size),
+        AppState::ToolApproval => render_tool_approval(frame, app, state, size),
         _ => {}
     }
 }
@@ -522,11 +526,20 @@ fn render_status_bar(frame: &mut Frame, app: &HadesApp, state: &TuiState, area: 
         return;
     }
 
+    let ws_name = app.workspace().name();
     let model_display = app.active_model_display();
     let mode_display = &app.config().general.default_mode;
 
     let status_line = Line::from(vec![
         Span::styled(" ", Style::default()),
+        Span::styled("📁 ", Style::default().fg(Color::Cyan)),
+        Span::styled(
+            ws_name,
+            Style::default()
+                .fg(Color::White)
+                .add_modifier(Modifier::BOLD),
+        ),
+        Span::styled(" · ", Style::default().fg(Color::DarkGray)),
         Span::styled(
             if model_display == "Not configured" {
                 "No Model"
@@ -634,9 +647,212 @@ fn render_command_palette(frame: &mut Frame, app: &HadesApp, state: &TuiState, a
     frame.render_widget(list, popup_area);
 }
 
+/// Renders the floating Session Switcher modal.
+fn render_session_select(frame: &mut Frame, state: &TuiState, area: Rect) {
+    let popup_area = centered_rect(80, 65, area);
+    frame.render_widget(Clear, popup_area);
+
+    let items: Vec<ListItem> = if state.sessions.is_empty() {
+        vec![ListItem::new(Line::from(Span::styled(
+            "   No saved sessions found. Press Esc to return.",
+            Style::default().fg(Color::DarkGray),
+        )))]
+    } else {
+        state
+            .sessions
+            .iter()
+            .enumerate()
+            .map(|(idx, s)| {
+                let is_selected = idx == state.selected_session_index;
+                let style = if is_selected {
+                    Style::default()
+                        .fg(Color::Cyan)
+                        .add_modifier(Modifier::BOLD)
+                } else {
+                    Style::default().fg(Color::White)
+                };
+
+                let prefix = if is_selected { " ▸ " } else { "   " };
+                let short_id = if s.id.len() >= 8 { &s.id[..8] } else { &s.id };
+                let model_str = s.active_model.as_deref().unwrap_or("no model");
+                let updated_str = s.updated_at.format("%b %d %H:%M").to_string();
+
+                let line = Line::from(vec![
+                    Span::styled(prefix, style),
+                    Span::styled(
+                        format!(
+                            "{:<24}",
+                            if s.title.len() > 24 {
+                                format!("{}...", &s.title[..21])
+                            } else {
+                                s.title.clone()
+                            }
+                        ),
+                        style.add_modifier(Modifier::BOLD),
+                    ),
+                    Span::styled(
+                        format!(" [{short_id}]"),
+                        Style::default().fg(Color::DarkGray),
+                    ),
+                    Span::styled(
+                        format!(
+                            " [{:<16}]",
+                            if model_str.len() > 16 {
+                                format!("{}...", &model_str[..13])
+                            } else {
+                                model_str.to_string()
+                            }
+                        ),
+                        Style::default().fg(Color::Yellow),
+                    ),
+                    Span::styled(
+                        format!(" {:>3} msgs", s.message_count),
+                        Style::default().fg(Color::Green),
+                    ),
+                    Span::styled(
+                        format!("  {}", updated_str),
+                        Style::default().fg(Color::DarkGray),
+                    ),
+                ]);
+
+                ListItem::new(line)
+            })
+            .collect()
+    };
+
+    let block = Block::default()
+        .title(" Conversation Sessions  [Enter: Open | r: Rename | d: Delete | Esc: Back] ")
+        .title_style(
+            Style::default()
+                .fg(Color::Cyan)
+                .add_modifier(Modifier::BOLD),
+        )
+        .borders(Borders::ALL)
+        .border_type(BorderType::Rounded)
+        .border_style(Style::default().fg(Color::Cyan));
+
+    let list = List::new(items).block(block);
+    frame.render_widget(list, popup_area);
+}
+
+/// Renders the floating Session Rename dialog.
+fn render_session_rename(frame: &mut Frame, state: &TuiState, area: Rect) {
+    let popup_area = centered_rect(60, 25, area);
+    frame.render_widget(Clear, popup_area);
+
+    let chunks = Layout::default()
+        .direction(Direction::Vertical)
+        .constraints([
+            Constraint::Length(1), // Title prompt
+            Constraint::Length(3), // Input box
+            Constraint::Length(1), // Key hints
+        ])
+        .margin(1)
+        .split(popup_area);
+
+    let block = Block::default()
+        .title(" Rename Session ")
+        .title_style(
+            Style::default()
+                .fg(Color::Cyan)
+                .add_modifier(Modifier::BOLD),
+        )
+        .borders(Borders::ALL)
+        .border_type(BorderType::Rounded)
+        .border_style(Style::default().fg(Color::Cyan));
+    frame.render_widget(block, popup_area);
+
+    let prompt_p =
+        Paragraph::new("Enter new session title:").style(Style::default().fg(Color::White));
+    frame.render_widget(prompt_p, chunks[0]);
+
+    let input_block = Block::default()
+        .borders(Borders::ALL)
+        .border_style(Style::default().fg(Color::Yellow));
+    let input_p = Paragraph::new(format!("{}█", state.rename_input))
+        .style(
+            Style::default()
+                .fg(Color::Yellow)
+                .add_modifier(Modifier::BOLD),
+        )
+        .block(input_block);
+    frame.render_widget(input_p, chunks[1]);
+
+    let hints_p = Paragraph::new("[Enter] Confirm    [Esc] Cancel")
+        .style(Style::default().fg(Color::DarkGray));
+    frame.render_widget(hints_p, chunks[2]);
+}
+
+/// Renders the floating Session Deletion Confirmation modal.
+fn render_session_delete_confirm(frame: &mut Frame, state: &TuiState, area: Rect) {
+    let popup_area = centered_rect(55, 30, area);
+    frame.render_widget(Clear, popup_area);
+
+    let title_display = if state.delete_session_title.len() > 30 {
+        format!("{}...", &state.delete_session_title[..27])
+    } else {
+        state.delete_session_title.clone()
+    };
+
+    let chunks = Layout::default()
+        .direction(Direction::Vertical)
+        .constraints([
+            Constraint::Length(1), // Question
+            Constraint::Length(2), // Warning note
+            Constraint::Length(3), // Action buttons
+        ])
+        .margin(1)
+        .split(popup_area);
+
+    let block = Block::default()
+        .title(" Delete Session ")
+        .title_style(Style::default().fg(Color::Red).add_modifier(Modifier::BOLD))
+        .borders(Borders::ALL)
+        .border_type(BorderType::Rounded)
+        .border_style(Style::default().fg(Color::Red));
+    frame.render_widget(block, popup_area);
+
+    let q_p = Paragraph::new(format!("Delete session \"{}\"?", title_display)).style(
+        Style::default()
+            .fg(Color::White)
+            .add_modifier(Modifier::BOLD),
+    );
+    frame.render_widget(q_p, chunks[0]);
+
+    let warn_p = Paragraph::new("This action is permanent and cannot be undone.")
+        .style(Style::default().fg(Color::DarkGray));
+    frame.render_widget(warn_p, chunks[1]);
+
+    let btn_style_del = if state.delete_confirm_action == 0 {
+        Style::default()
+            .fg(Color::Black)
+            .bg(Color::Red)
+            .add_modifier(Modifier::BOLD)
+    } else {
+        Style::default().fg(Color::Red)
+    };
+    let btn_style_can = if state.delete_confirm_action == 1 {
+        Style::default()
+            .fg(Color::Black)
+            .bg(Color::Cyan)
+            .add_modifier(Modifier::BOLD)
+    } else {
+        Style::default().fg(Color::DarkGray)
+    };
+
+    let btns_line = Line::from(vec![
+        Span::raw("  "),
+        Span::styled(" [y] Delete ", btn_style_del),
+        Span::raw("     "),
+        Span::styled(" [n / Esc] Cancel ", btn_style_can),
+    ]);
+    let btns_p = Paragraph::new(btns_line);
+    frame.render_widget(btns_p, chunks[2]);
+}
+
 /// Renders the floating Provider Selection modal.
 fn render_provider_select(frame: &mut Frame, state: &TuiState, area: Rect) {
-    let popup_area = centered_rect(60, 50, area);
+    let popup_area = centered_rect(65, 55, area);
     frame.render_widget(Clear, popup_area);
 
     let items: Vec<ListItem> = state
@@ -654,13 +870,23 @@ fn render_provider_select(frame: &mut Frame, state: &TuiState, area: Rect) {
             };
 
             let prefix = if is_selected { " ▸ " } else { "   " };
+            let (badge, badge_color) = if p.is_local {
+                ("[Local]", Color::Green)
+            } else {
+                ("[Cloud]", Color::Blue)
+            };
+
             let line = Line::from(vec![
                 Span::styled(prefix, style),
+                Span::styled(format!("{badge:<8}"), Style::default().fg(badge_color)),
                 Span::styled(
-                    format!("{:<20}", p.name),
+                    format!("{:<18}", p.name),
                     style.add_modifier(Modifier::BOLD),
                 ),
-                Span::styled(format!(" {}", p.description), style),
+                Span::styled(
+                    format!(" {}", p.description),
+                    Style::default().fg(Color::DarkGray),
+                ),
             ]);
 
             ListItem::new(line)
@@ -668,7 +894,7 @@ fn render_provider_select(frame: &mut Frame, state: &TuiState, area: Rect) {
         .collect();
 
     let block = Block::default()
-        .title(" Select AI Provider ")
+        .title(" Select AI Provider / Engine ")
         .title_style(
             Style::default()
                 .fg(Color::Cyan)
@@ -1011,4 +1237,144 @@ fn render_verification_failed(frame: &mut Frame, state: &TuiState, area: Rect) {
         .block(block)
         .wrap(Wrap { trim: false });
     frame.render_widget(paragraph, popup_area);
+}
+
+/// Renders the centered interactive modal requesting user authorization for tool execution.
+fn render_tool_approval(frame: &mut Frame, app: &HadesApp, state: &TuiState, area: Rect) {
+    let popup_area = centered_rect(70, 60, area);
+    frame.render_widget(Clear, popup_area);
+
+    let (call_name, risk_level, summary, details) = if let Some(req) = app.pending_approval() {
+        (
+            req.call.tool_name.as_str(),
+            req.risk,
+            req.summary.as_str(),
+            req.details.as_str(),
+        )
+    } else {
+        (
+            "unknown",
+            hades_tools::RiskLevel::Medium,
+            "Tool execution authorization required.",
+            "",
+        )
+    };
+
+    let risk_color = match risk_level {
+        hades_tools::RiskLevel::Safe => Color::Green,
+        hades_tools::RiskLevel::Low => Color::Cyan,
+        hades_tools::RiskLevel::Medium => Color::Yellow,
+        hades_tools::RiskLevel::High => Color::Rgb(255, 140, 0),
+        hades_tools::RiskLevel::Critical => Color::Red,
+    };
+
+    let block = Block::default()
+        .title(Span::styled(
+            " ⚠️ Tool Execution Authorization ",
+            Style::default()
+                .fg(Color::Yellow)
+                .add_modifier(Modifier::BOLD),
+        ))
+        .borders(Borders::ALL)
+        .border_type(BorderType::Rounded)
+        .border_style(Style::default().fg(risk_color));
+
+    let inner = block.inner(popup_area);
+    frame.render_widget(block, popup_area);
+
+    let chunks = Layout::default()
+        .direction(Direction::Vertical)
+        .constraints([
+            Constraint::Length(2), // Risk & Tool Header
+            Constraint::Length(2), // Summary
+            Constraint::Min(3),    // Details
+            Constraint::Length(3), // Action buttons
+        ])
+        .split(inner);
+
+    // 1. Header with Risk Badge
+    let header_line = Line::from(vec![
+        Span::styled("  Tool: ", Style::default().fg(Color::White)),
+        Span::styled(
+            call_name,
+            Style::default()
+                .fg(Color::Cyan)
+                .add_modifier(Modifier::BOLD),
+        ),
+        Span::styled("   Risk: ", Style::default().fg(Color::White)),
+        Span::styled(
+            format!(" [{risk_level}] "),
+            Style::default()
+                .fg(Color::Black)
+                .bg(risk_color)
+                .add_modifier(Modifier::BOLD),
+        ),
+    ]);
+    frame.render_widget(Paragraph::new(header_line), chunks[0]);
+
+    // 2. Summary
+    let summary_para = Paragraph::new(Line::from(vec![
+        Span::styled("  ", Style::default()),
+        Span::styled(
+            summary,
+            Style::default()
+                .fg(Color::White)
+                .add_modifier(Modifier::BOLD),
+        ),
+    ]));
+    frame.render_widget(summary_para, chunks[1]);
+
+    // 3. Details
+    let details_lines: Vec<Line> = details
+        .lines()
+        .map(|l| {
+            Line::from(Span::styled(
+                format!("  {l}"),
+                Style::default().fg(Color::Gray),
+            ))
+        })
+        .collect();
+    let details_para = Paragraph::new(details_lines)
+        .block(
+            Block::default()
+                .borders(Borders::ALL)
+                .border_style(Style::default().fg(Color::DarkGray))
+                .title(Span::styled(
+                    " Invocation Details ",
+                    Style::default().fg(Color::DarkGray),
+                )),
+        )
+        .wrap(Wrap { trim: false });
+    frame.render_widget(details_para, chunks[2]);
+
+    // 4. Buttons
+    let actions = ["Allow Once", "Allow for Session", "Deny", "Cancel"];
+    let button_spans: Vec<Span> = actions
+        .iter()
+        .enumerate()
+        .flat_map(|(i, &label)| {
+            let is_selected = i == state.tool_approval_selection;
+            let style = if is_selected {
+                Style::default()
+                    .fg(Color::Black)
+                    .bg(Color::Cyan)
+                    .add_modifier(Modifier::BOLD)
+            } else {
+                Style::default().fg(Color::DarkGray)
+            };
+            vec![
+                Span::styled(format!(" [ {label} ] "), style),
+                Span::styled("  ", Style::default()),
+            ]
+        })
+        .collect();
+
+    let button_line = Line::from(button_spans);
+    let nav_hint = Line::from(Span::styled(
+        "←/→ or Tab to select, Enter to confirm, y/s/d/Esc shortcuts",
+        Style::default().fg(Color::DarkGray),
+    ));
+
+    let button_para = Paragraph::new(vec![button_line, nav_hint]).alignment(Alignment::Center);
+    frame.render_widget(button_para, chunks[3]);
 }

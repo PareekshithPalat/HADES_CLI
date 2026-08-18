@@ -8,6 +8,7 @@ members = [
     "crates/hades-events",
     "crates/hades-storage",
     "crates/hades-provider",
+    "crates/hades-tools",
 ]
 
 [workspace.package]
@@ -22,6 +23,7 @@ hades-config = { path = "crates/hades-config" }
 hades-events = { path = "crates/hades-events" }
 hades-storage = { path = "crates/hades-storage" }
 hades-provider = { path = "crates/hades-provider" }
+hades-tools = { path = "crates/hades-tools" }
 hades-core = { path = "crates/hades-core" }
 hades-tui = { path = "crates/hades-tui" }
 
@@ -52,3 +54,6 @@ tracing-appender = "0.2"
 
 # Time utilities
 chrono = { version = "0.4", features = ["serde"] }
+
+# Identifiers
+uuid = { version = "1.11", features = ["v4", "serde"] }

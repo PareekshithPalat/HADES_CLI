@@ -11,11 +11,14 @@ hades-config.workspace = true
 hades-events.workspace = true
 hades-storage.workspace = true
 hades-provider.workspace = true
+hades-tools.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 thiserror.workspace = true
 tracing.workspace = true
 chrono.workspace = true
+uuid.workspace = true
+async-trait.workspace = true
 tokio = { workspace = true, features = ["sync", "rt"] }
 
 [dev-dependencies]
