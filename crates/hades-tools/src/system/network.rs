@@ -378,7 +378,7 @@ fn list_active_connections(limit: usize) -> String {
     {
         if let Ok(output) = Command::new("ss").args(["-tuln"]).output() {
             let text = String::from_utf8_lossy(&output.stdout);
-            let mut lines: Vec<&str> = text.lines().take(limit + 1).collect();
+            let lines: Vec<&str> = text.lines().take(limit + 1).collect();
             if !lines.is_empty() {
                 return lines.join("\n");
             }
