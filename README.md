@@ -7,7 +7,7 @@
 [![Rust](https://img.shields.io/badge/Rust-1.80%2B-orange?style=for-the-badge&logo=rust&logoColor=white)](https://www.rust-lang.org/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-FFB800?style=for-the-badge)](LICENSE)
 [![Platform](https://img.shields.io/badge/Platform-Windows%20%7C%20macOS%20%7C%20Linux-454545?style=for-the-badge)](https://github.com/PareekshithPalat/HADES_CLI)
-[![Tests](https://img.shields.io/badge/Tests-120%20Passing-22C55E?style=for-the-badge&logoColor=white)](https://github.com/PareekshithPalat/HADES_CLI)
+[![CI](https://img.shields.io/github/actions/workflow/status/PareekshithPalat/HADES_CLI/ci.yml?branch=main&style=for-the-badge&label=CI&logo=githubactions&logoColor=white)](https://github.com/PareekshithPalat/HADES_CLI/actions/workflows/ci.yml)
 [![Contributions Welcome](https://img.shields.io/badge/PRs-Welcome-FF7D00?style=for-the-badge)](CONTRIBUTING.md)
 
 <br/>
