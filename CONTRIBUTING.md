@@ -1,30 +1,30 @@
 # Contributing to HADES
 
-Thank you for your interest in contributing to **HADES**! 🜲
+Thank you for your interest in contributing to **HADES**.
 
-Hades is an open-source, universal AI agent CLI runtime engineered in Rust. Our goal is to provide developers with a single, fast, secure, transparent, and completely user-controlled AI agent interface across any provider, machine, and workflow.
+Hades is an open-source, universal AI agent CLI runtime. Our goal is to provide developers with a fast, secure, transparent, and user-controlled AI agent interface across any provider, machine, and workflow.
 
-Whether you are fixing a bug, adding a new provider adapter, writing a diagnostic tool, optimizing the terminal UI, or improving documentation, we welcome your contributions!
-
----
-
-## 📜 Table of Contents
-
-- [Code of Conduct](#-code-of-conduct)
-- [Development Prerequisites](#-development-prerequisites)
-- [Repository Structure & Crates](#-repository-structure--crates)
-- [Development Workflow](#-development-workflow)
-- [Extending Hades](#-extending-hades)
-  - [Adding a New Tool](#1-adding-a-new-tool)
-  - [Adding a New Provider Adapter](#2-adding-a-new-provider-adapter)
-  - [Adding a New Slash Command](#3-adding-a-new-slash-command)
-- [Code Quality & Testing Standards](#-code-quality--testing-standards)
-- [Submitting a Pull Request](#-submitting-a-pull-request)
-- [Community & Support](#-community--support)
+Whether you are fixing a bug, adding a new provider adapter, writing a diagnostic tool, optimizing the terminal UI, or improving documentation, we welcome your contributions.
 
 ---
 
-## 🤝 Code of Conduct
+## Table of Contents
+
+- [Code of Conduct](#code-of-conduct)
+- [Development Prerequisites](#development-prerequisites)
+- [Repository Structure & Crates](#repository-structure--crates)
+- [Development Workflow](#development-workflow)
+- [Extending Hades](#extending-hades)
+  - [1. Adding a New Tool](#1-adding-a-new-tool)
+  - [2. Adding a New Provider Adapter](#2-adding-a-new-provider-adapter)
+  - [3. Adding a New Slash Command](#3-adding-a-new-slash-command)
+- [Code Quality & Testing Standards](#code-quality--testing-standards)
+- [Submitting a Pull Request](#submitting-a-pull-request)
+- [Community & Support](#community--support)
+
+---
+
+## Code of Conduct
 
 We are committed to providing a friendly, safe, welcoming, and harassment-free environment for all contributors, regardless of experience level, background, or identity.
 
@@ -34,7 +34,7 @@ We are committed to providing a friendly, safe, welcoming, and harassment-free e
 
 ---
 
-## 🛠️ Development Prerequisites
+## Development Prerequisites
 
 To build and contribute to Hades, you will need:
 
@@ -59,7 +59,7 @@ To build and contribute to Hades, you will need:
 
 ---
 
-## 🏗️ Repository Structure & Crates
+## Repository Structure & Crates
 
 Hades is organized as a modular Cargo workspace consisting of 8 focused crates:
 
@@ -84,19 +84,19 @@ Hades-Cli/
 ### Architectural Principles
 
 1. **The Model is the Brain, Hades is the Control Plane**: The LLM suggests actions, but Hades governs execution, sandboxing, and security.
-2. **User is the Ultimate Authority**: Dangerous or mutating actions (`system.process.terminate`, destructive shell commands) require interactive user approval.
+2. **User is the Authority**: Destructive or mutating actions (`system.process.terminate`, destructive shell commands) require interactive user approval.
 3. **Workspace Sandboxing**: Filesystem operations are strictly validated against workspace boundaries to prevent directory traversal attacks.
 4. **Secret Protection**: API tokens, private keys, and environment credentials must always be redacted in display outputs, logs, and state objects.
 
 ---
 
-## 🚀 Development Workflow
+## Development Workflow
 
 ### 1. Fork and Clone
 
 ```bash
-git clone https://github.com/your-username/Hades-Cli.git
-cd Hades-Cli
+git clone https://github.com/your-username/HADES_CLI.git
+cd HADES_CLI
 git checkout -b feat/your-feature-name
 ```
 
@@ -116,13 +116,13 @@ cargo build --release
 # Run with default settings
 cargo run -p hades-cli
 
-# Run pointing to a custom workspace or config
+# Run pointing to a custom config
 cargo run -p hades-cli -- --config ~/.hades/config.toml
 ```
 
 ---
 
-## 🧩 Extending Hades
+## Extending Hades
 
 ### 1. Adding a New Tool
 
@@ -171,7 +171,6 @@ All agent tools reside in `crates/hades-tools/src/` and implement the `Tool` tra
                None => return ToolResult::invalid_input(call_id, "custom.tool_name", "Missing 'query'"),
            };
 
-           // Execute safe logic
            let result_text = format!("Executed query: {query}");
            ToolResult::success(call_id, "custom.tool_name", result_text)
        }
@@ -202,9 +201,9 @@ Provider adapters reside in `crates/hades-provider/src/adapters/` and implement 
 
 ---
 
-## 🧪 Code Quality & Testing Standards
+## Code Quality & Testing Standards
 
-Before submitting your pull request, verify that all four quality gates pass with **zero errors and zero warnings**:
+Before submitting your pull request, verify that all quality gates pass:
 
 ```bash
 # 1. Code Formatting
@@ -220,36 +219,28 @@ cargo test --workspace
 cargo clippy --workspace --all-targets --all-features -- -D warnings
 ```
 
-### Writing Tests
-
-- **Unit Tests**: Place in the same file inside `#[cfg(test)] mod tests { ... }`.
-- **Integration Tests**: Place in `crates/hades-cli/tests/integration_tests.rs`.
-- Ensure async tests utilize `#[tokio::test]`.
-- Mock external network requests; never require live API keys for test suites.
-
 ---
 
-## 📥 Submitting a Pull Request
+## Submitting a Pull Request
 
 1. **Commit Guidelines**:
    - Write clear, concise commit messages following the Conventional Commits format:
-     - `feat: add system.gpu diagnostic tool`
+     - `feat: add system diagnostic tool`
      - `fix: resolve prompt text wrapping on narrow terminals`
      - `docs: update provider setup instructions`
-     - `refactor: optimize layout chunk allocation in hades-tui`
 2. **Push to Your Fork**:
    ```bash
    git push origin feat/your-feature-name
    ```
 3. **Open a Pull Request**:
-   - Open a PR against the `master` / `main` branch.
+   - Open a PR against the `main` branch.
    - Describe the problem solved and changes introduced.
-   - Attach screenshots or terminal recordings for any UI changes.
+   - Attach screenshots or recordings for any UI modifications.
    - Confirm all quality checks pass.
 
 ---
 
-## 💬 Community & Support
+## Community & Support
 
 - **Issues**: Report bugs or suggest features via GitHub Issues.
 - **Discussions**: Share agent workflows, custom tools, and ideas on GitHub Discussions.
