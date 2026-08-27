@@ -64,6 +64,27 @@ impl ChatTurn {
     pub fn clear_activity(&mut self) {
         self.activity_text = None;
     }
+
+    /// Extracts clean, unformatted text for copying (without ANSI codes, UI branches or borders).
+    pub fn clean_text(&self) -> String {
+        let mut out = String::new();
+        out.push_str("You:\n");
+        out.push_str(&self.user_prompt);
+        out.push_str("\n\n");
+        out.push_str("Hades:\n");
+        if let Some(ref resp) = self.assistant_response {
+            out.push_str(resp);
+        } else if let Some(ref err) = self.error_text {
+            out.push_str("Error: ");
+            out.push_str(err);
+        }
+        out
+    }
+
+    /// Extracts clean assistant response text only.
+    pub fn clean_response_text(&self) -> Option<String> {
+        self.assistant_response.clone()
+    }
 }
 
 /// Transient UI view state for rendering, scrolling, and input handling.
@@ -173,6 +194,13 @@ pub struct TuiState {
     // Tool Approval Modal Fields
     /// Selected button index in ToolApproval modal (0 = Allow Once, 1 = Allow Session, 2 = Deny, 3 = Cancel).
     pub tool_approval_selection: usize,
+
+    // Copy / Selection Mode Fields
+    /// Selected turn index in CopySelect mode.
+    pub copy_selected_turn_index: usize,
+
+    /// Ephemeral toast notification banner (text, creation instant).
+    pub toast: Option<(String, std::time::Instant)>,
 }
 
 impl TuiState {
@@ -392,5 +420,107 @@ impl TuiState {
                     .map(|resp| (turn.user_prompt.clone(), resp.clone()))
             })
             .collect()
+    }
+
+    /// Sets a temporary toast notification message displayed in the UI.
+    pub fn set_toast(&mut self, message: impl Into<String>) {
+        self.toast = Some((message.into(), std::time::Instant::now()));
+    }
+
+    /// Returns the active toast message if within display duration (3 seconds).
+    pub fn toast_text(&self) -> Option<&str> {
+        if let Some((ref text, instant)) = self.toast {
+            if instant.elapsed() < std::time::Duration::from_secs(3) {
+                return Some(text);
+            }
+        }
+        None
+    }
+
+    /// Extracts clean text of the currently selected turn.
+    pub fn copy_selected_turn_text(&self) -> Option<String> {
+        self.turns
+            .get(self.copy_selected_turn_index)
+            .map(|t| t.clean_text())
+    }
+
+    /// Extracts clean text of the latest assistant response.
+    pub fn copy_latest_assistant_response(&self) -> Option<String> {
+        self.turns.last().and_then(|t| t.clean_response_text())
+    }
+
+    /// Extracts clean text of the entire conversation.
+    pub fn copy_all_conversation_text(&self) -> String {
+        self.turns
+            .iter()
+            .map(|t| t.clean_text())
+            .collect::<Vec<_>>()
+            .join("\n\n---\n\n")
+    }
+}
+
+/// Helper copying arbitrary string to host OS clipboard cross-platform.
+pub fn copy_to_clipboard(text: &str) -> Result<(), String> {
+    let mut clipboard =
+        arboard::Clipboard::new().map_err(|e| format!("Clipboard initialization error: {e}"))?;
+    clipboard
+        .set_text(text.to_string())
+        .map_err(|e| format!("Clipboard write failed: {e}"))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_chat_turn_clean_text() {
+        let mut turn = ChatTurn::new("What is the speed of light?");
+        turn.set_response("The speed of light is approximately 299,792,458 m/s.");
+
+        let clean = turn.clean_text();
+        assert!(clean.contains("You:\nWhat is the speed of light?"));
+        assert!(clean.contains("Hades:\nThe speed of light is approximately 299,792,458 m/s."));
+        assert_eq!(
+            turn.clean_response_text().as_deref(),
+            Some("The speed of light is approximately 299,792,458 m/s.")
+        );
+    }
+
+    #[test]
+    fn test_tui_state_copy_methods() {
+        let mut state = TuiState::new();
+        state.turns.push(ChatTurn::with_response(
+            "Hello",
+            "Hello! How can I help you today?",
+        ));
+        state.turns.push(ChatTurn::with_response(
+            "List files",
+            "Files: main.rs, lib.rs",
+        ));
+
+        state.copy_selected_turn_index = 0;
+        let t0 = state.copy_selected_turn_text().unwrap();
+        assert!(t0.contains("You:\nHello"));
+
+        state.copy_selected_turn_index = 1;
+        let t1 = state.copy_selected_turn_text().unwrap();
+        assert!(t1.contains("You:\nList files"));
+
+        let latest = state.copy_latest_assistant_response().unwrap();
+        assert_eq!(latest, "Files: main.rs, lib.rs");
+
+        let all = state.copy_all_conversation_text();
+        assert!(all.contains("Hello"));
+        assert!(all.contains("List files"));
+        assert!(all.contains("---"));
+    }
+
+    #[test]
+    fn test_toast_message_lifecycle() {
+        let mut state = TuiState::new();
+        assert_eq!(state.toast_text(), None);
+
+        state.set_toast("✓ Copied to clipboard");
+        assert_eq!(state.toast_text(), Some("✓ Copied to clipboard"));
     }
 }

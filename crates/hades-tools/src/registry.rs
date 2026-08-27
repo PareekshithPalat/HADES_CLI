@@ -10,6 +10,12 @@ use crate::filesystem::{
     FileSystemMkdirTool, FileSystemReadTool, FileSystemWriteTool,
 };
 use crate::shell::ShellExecuteTool;
+use crate::system::{
+    SystemArchitectureTool, SystemHostnameTool, SystemInfoTool, SystemNetworkConnectionsTool,
+    SystemNetworkInterfacesTool, SystemNetworkPortCheckTool, SystemNetworkPortProcessTool,
+    SystemPlatformTool, SystemProcessFindTool, SystemProcessInspectTool, SystemProcessListTool,
+    SystemProcessTerminateTool, SystemRuntimeVersionTool, SystemRuntimeWhichTool, SystemUptimeTool,
+};
 use crate::workspace_tools::{WorkspaceDetectTool, WorkspaceInspectTool};
 
 /// Thread-safe registry maintaining all registered tools available to Hades and models.
@@ -83,6 +89,23 @@ impl ToolRegistry {
         // Workspace tools
         reg.register(WorkspaceInspectTool);
         reg.register(WorkspaceDetectTool);
+
+        // System Diagnostic & Inspection tools
+        reg.register(SystemInfoTool);
+        reg.register(SystemPlatformTool);
+        reg.register(SystemArchitectureTool);
+        reg.register(SystemHostnameTool);
+        reg.register(SystemUptimeTool);
+        reg.register(SystemProcessListTool);
+        reg.register(SystemProcessInspectTool);
+        reg.register(SystemProcessFindTool);
+        reg.register(SystemProcessTerminateTool);
+        reg.register(SystemNetworkInterfacesTool);
+        reg.register(SystemNetworkPortCheckTool);
+        reg.register(SystemNetworkPortProcessTool);
+        reg.register(SystemNetworkConnectionsTool);
+        reg.register(SystemRuntimeWhichTool);
+        reg.register(SystemRuntimeVersionTool);
 
         reg
     }

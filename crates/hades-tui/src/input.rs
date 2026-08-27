@@ -79,6 +79,7 @@ impl InputHandler {
                 Self::handle_verification_failed(key_event, app, tui_state)
             }
             AppState::ToolApproval => Self::handle_tool_approval(key_event, app, tui_state),
+            AppState::CopySelect => Self::handle_copy_select(key_event, app, tui_state),
             _ => Ok(KeyActionResult::Handled),
         }
     }
@@ -219,6 +220,32 @@ impl InputHandler {
                 }
                 Ok(KeyActionResult::Handled)
             }
+            // Clipboard / Copy: Ctrl+Y
+            KeyCode::Char('y') if key_event.modifiers.contains(KeyModifiers::CONTROL) => {
+                if tui_state.turns.is_empty() {
+                    tui_state.set_toast("No conversation turns to copy.");
+                } else if tui_state.turns.len() == 1 {
+                    // Directly copy the single assistant response or turn
+                    if let Some(resp) = tui_state.copy_latest_assistant_response() {
+                        if let Err(e) = crate::state::copy_to_clipboard(&resp) {
+                            tui_state.set_error(e);
+                        } else {
+                            tui_state.set_toast("✓ Copied assistant response to clipboard");
+                        }
+                    } else if let Some(turn_text) = tui_state.copy_selected_turn_text() {
+                        if let Err(e) = crate::state::copy_to_clipboard(&turn_text) {
+                            tui_state.set_error(e);
+                        } else {
+                            tui_state.set_toast("✓ Copied turn to clipboard");
+                        }
+                    }
+                } else {
+                    // Open interactive Copy Selection mode
+                    tui_state.copy_selected_turn_index = tui_state.turns.len().saturating_sub(1);
+                    app.transition_to(AppState::CopySelect)?;
+                }
+                Ok(KeyActionResult::Handled)
+            }
             KeyCode::Char(c) => {
                 tui_state.push_prompt_char(c);
                 Ok(KeyActionResult::Handled)
@@ -237,6 +264,51 @@ impl InputHandler {
             }
             _ => Ok(KeyActionResult::Handled),
         }
+    }
+
+    /// Handles keyboard events when in interactive conversation turn copy selection mode.
+    fn handle_copy_select(
+        key_event: KeyEvent,
+        app: &mut HadesApp,
+        tui_state: &mut TuiState,
+    ) -> Result<KeyActionResult, CoreError> {
+        match key_event.code {
+            KeyCode::Up | KeyCode::Char('k') => {
+                tui_state.copy_selected_turn_index =
+                    tui_state.copy_selected_turn_index.saturating_sub(1);
+            }
+            KeyCode::Down | KeyCode::Char('j') => {
+                if !tui_state.turns.is_empty()
+                    && tui_state.copy_selected_turn_index + 1 < tui_state.turns.len()
+                {
+                    tui_state.copy_selected_turn_index += 1;
+                }
+            }
+            KeyCode::Enter | KeyCode::Char('y') | KeyCode::Char('c') => {
+                if let Some(text) = tui_state.copy_selected_turn_text() {
+                    if let Err(e) = crate::state::copy_to_clipboard(&text) {
+                        tui_state.set_error(e);
+                    } else {
+                        tui_state.set_toast("✓ Copied selected turn to clipboard");
+                    }
+                }
+                app.transition_to(AppState::Running)?;
+            }
+            KeyCode::Char('a') => {
+                let all_text = tui_state.copy_all_conversation_text();
+                if let Err(e) = crate::state::copy_to_clipboard(&all_text) {
+                    tui_state.set_error(e);
+                } else {
+                    tui_state.set_toast("✓ Copied entire conversation to clipboard");
+                }
+                app.transition_to(AppState::Running)?;
+            }
+            KeyCode::Esc | KeyCode::Char('q') => {
+                app.transition_to(AppState::Running)?;
+            }
+            _ => {}
+        }
+        Ok(KeyActionResult::Handled)
     }
 
     fn handle_command_palette(

@@ -2,6 +2,7 @@ pub mod error;
 pub mod model;
 pub mod repository;
 pub mod service;
+pub mod time;
 
 pub use error::StorageError;
 pub use model::{
@@ -10,6 +11,7 @@ pub use model::{
 };
 pub use repository::{FileSessionRepository, SessionRepository};
 pub use service::StorageService;
+pub use time::{format_session_timestamp, format_session_timestamp_at};
 
 #[cfg(test)]
 mod tests {

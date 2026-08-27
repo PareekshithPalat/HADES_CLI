@@ -1031,12 +1031,19 @@ impl HadesApp {
         }
         sys.push_str(
             "\nTOOL USE POLICY & INSTRUCTIONS:\n\
-            You have access to native workspace tools to read, edit, write, delete, and list files, run shell processes, and inspect workspace/environment status.\n\
+            You have access to native workspace and system diagnostic tools:\n\
+            - Filesystem tools: read, edit, write, delete, create, and list files inside the workspace.\n\
+            - System info & environment tools: system.info, system.platform, system.architecture, system.hostname, system.uptime, environment.list, environment.get.\n\
+            - Process tools: system.process.list (lists running processes with CPU/memory), system.process.inspect (inspects process by PID), system.process.find (finds process by name/query).\n\
+            - Network tools: system.network.port_check (checks if a port is in use), system.network.port_process (identifies PID/process using a port), system.network.interfaces, system.network.connections.\n\
+            - Runtime tools: system.runtime.which (finds executable in PATH), system.runtime.version (inspects installed runtime version).\n\
+            - Shell & execution tools: shell.execute.\n\
             CRITICAL RULES:\n\
             1. Whenever the user asks to list files, read a file, create/modify files, or run commands, you MUST invoke the appropriate tool directly.\n\
-            2. DO NOT output code snippets or Python scripts explaining how the user can perform the task if a tool is available—INVOKE THE TOOL.\n\
-            3. Inspect existing files before editing them.\n\
-            4. Provide concise, direct, and factual answers once tool results are available.\n"
+            2. Whenever the user asks diagnostic questions about their system (e.g. running processes, what is using a port, installed runtime versions, PATH lookup, environment variables, OS details), you MUST invoke the corresponding system tool. DO NOT say you don't have access to the system when a tool is available.\n\
+            3. DO NOT output code snippets or Python scripts explaining how the user can perform the task if a tool is available—INVOKE THE TOOL.\n\
+            4. Inspect existing files before editing them.\n\
+            5. Provide concise, direct, and factual answers once tool results are available.\n"
         );
         sys
     }

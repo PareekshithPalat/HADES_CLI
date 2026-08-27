@@ -10,9 +10,10 @@ use ratatui::{
 };
 
 use crate::state::TuiState;
+use crate::theme::HadesTheme;
 use hades_core::{AppState, HadesApp};
 
-/// Main draw entry point dispatching view rendering with strict mathematical geometry.
+/// Main draw entry point dispatching view rendering with clean full-height conversation layout.
 pub fn render(frame: &mut Frame, app: &HadesApp, state: &mut TuiState) {
     let size = frame.area();
     if size.width < 10 || size.height < 5 {
@@ -20,43 +21,48 @@ pub fn render(frame: &mut Frame, app: &HadesApp, state: &mut TuiState) {
         return;
     }
 
-    // Dynamic Geometry Calculation
-    let header_height: u16 = if size.height >= 28 && size.width >= 60 {
-        8
-    } else if size.height >= 18 {
-        3
-    } else if size.height >= 10 {
-        1
-    } else {
-        0
-    };
+    // Dynamic input height based on text wrapping and multiline inputs
+    let max_input_height = size.height.saturating_sub(4).clamp(1, 8);
+    let input_height = calculate_input_height(&state.prompt_input, size.width, max_input_height);
 
-    let reserved_bottom_height: u16 = 3; // 1 divider + 1 prompt + 1 status
-    let conversation_height = size
-        .height
-        .saturating_sub(header_height + reserved_bottom_height);
+    let [chat_area, top_border_area, input_area, bottom_border_area, status_area] =
+        compute_layout_chunks(size, input_height);
 
-    let chunks = Layout::default()
-        .direction(Direction::Vertical)
-        .constraints([
-            Constraint::Length(header_height),
-            Constraint::Length(conversation_height),
-            Constraint::Length(2), // 1 divider + 1 prompt
-            Constraint::Length(1), // 1 status
-        ])
-        .split(size);
+    render_conversation(frame, app, state, chat_area);
+    render_input_top_border(frame, top_border_area);
+    render_input_area(frame, app, state, input_area);
+    render_input_bottom_border(frame, bottom_border_area);
+    render_status_bar(frame, app, state, status_area);
 
-    if header_height > 0 {
-        render_header(frame, chunks[0]);
+    // Floating Ephemeral Toast Notification (e.g. "✓ Copied assistant response to clipboard")
+    if let Some(toast) = state.toast_text() {
+        let toast_len = (toast.chars().count() + 6) as u16;
+        let toast_width = toast_len.min(size.width.saturating_sub(4));
+        let toast_area = Rect {
+            x: size.width.saturating_sub(toast_width + 2),
+            y: chat_area.y + chat_area.height.saturating_sub(2),
+            width: toast_width,
+            height: 1,
+        };
+        frame.render_widget(Clear, toast_area);
+        let toast_line = Line::from(vec![
+            Span::styled("  ", Style::default()),
+            Span::styled(
+                toast,
+                Style::default()
+                    .fg(HadesTheme::RATATUI_GOLD)
+                    .add_modifier(Modifier::BOLD),
+            ),
+            Span::styled("  ", Style::default()),
+        ]);
+        let para = Paragraph::new(toast_line).style(Style::default().bg(Color::Rgb(35, 35, 35)));
+        frame.render_widget(para, toast_area);
     }
-    render_conversation(frame, app, state, chunks[1]);
-    render_prompt_area(frame, app, state, chunks[2]);
-    render_status_bar(frame, app, state, chunks[3]);
 
     // Modal Overlays (Minimal, clean floating dialogs)
     match app.state() {
         AppState::CommandPalette => render_command_palette(frame, app, state, size),
-        AppState::SessionSelect => render_session_select(frame, state, size),
+        AppState::SessionSelect => render_session_select(frame, app, state, size),
         AppState::SessionRename => render_session_rename(frame, state, size),
         AppState::SessionDeleteConfirm => render_session_delete_confirm(frame, state, size),
         AppState::ProviderSelect => render_provider_select(frame, state, size),
@@ -66,107 +72,8 @@ pub fn render(frame: &mut Frame, app: &HadesApp, state: &mut TuiState) {
         AppState::Verifying => render_verifying(frame, state, size),
         AppState::VerificationFailed => render_verification_failed(frame, state, size),
         AppState::ToolApproval => render_tool_approval(frame, app, state, size),
+        AppState::CopySelect => render_copy_select(frame, state, size),
         _ => {}
-    }
-}
-
-/// Renders the responsive Hades branding header scaled dynamically to terminal dimensions.
-fn render_header(frame: &mut Frame, area: Rect) {
-    if area.height == 0 || area.width == 0 {
-        return;
-    }
-
-    if area.height >= 8 && area.width >= 60 {
-        let lines = vec![
-            Line::from(vec![
-                Span::styled("                    ", Style::default()),
-                Span::styled(
-                    "🔱",
-                    Style::default()
-                        .fg(Color::Rgb(255, 215, 0))
-                        .add_modifier(Modifier::BOLD),
-                ),
-            ]),
-            Line::from(Span::styled(
-                "    █   █   ███   ████   █████   ████ ",
-                Style::default()
-                    .fg(Color::Cyan)
-                    .add_modifier(Modifier::BOLD),
-            )),
-            Line::from(Span::styled(
-                "    █   █  █   █  █   █  █       █    ",
-                Style::default()
-                    .fg(Color::Cyan)
-                    .add_modifier(Modifier::BOLD),
-            )),
-            Line::from(Span::styled(
-                "    █████  █████  █   █  ████     ███ ",
-                Style::default()
-                    .fg(Color::Cyan)
-                    .add_modifier(Modifier::BOLD),
-            )),
-            Line::from(Span::styled(
-                "    █   █  █   █  █   █  █           █",
-                Style::default()
-                    .fg(Color::Cyan)
-                    .add_modifier(Modifier::BOLD),
-            )),
-            Line::from(Span::styled(
-                "    █   █  █   █  ████   █████   ████ ",
-                Style::default()
-                    .fg(Color::Cyan)
-                    .add_modifier(Modifier::BOLD),
-            )),
-            Line::from(Span::styled(
-                "           Universal AI Agent CLI",
-                Style::default().fg(Color::DarkGray),
-            )),
-            Line::from(Span::styled(
-                "─".repeat(area.width as usize),
-                Style::default().fg(Color::DarkGray),
-            )),
-        ];
-        frame.render_widget(Paragraph::new(lines), area);
-    } else if area.height >= 3 {
-        let lines = vec![
-            Line::from(vec![
-                Span::styled(
-                    " 🔱 ",
-                    Style::default()
-                        .fg(Color::Rgb(255, 215, 0))
-                        .add_modifier(Modifier::BOLD),
-                ),
-                Span::styled(
-                    "H A D E S",
-                    Style::default()
-                        .fg(Color::Cyan)
-                        .add_modifier(Modifier::BOLD),
-                ),
-            ]),
-            Line::from(Span::styled(
-                "    Universal AI Agent CLI",
-                Style::default().fg(Color::DarkGray),
-            )),
-            Line::from(Span::styled(
-                "─".repeat(area.width as usize),
-                Style::default().fg(Color::DarkGray),
-            )),
-        ];
-        frame.render_widget(Paragraph::new(lines), area);
-    } else {
-        let line = Line::from(vec![
-            Span::styled(
-                " 🔱 HADES ",
-                Style::default()
-                    .fg(Color::Cyan)
-                    .add_modifier(Modifier::BOLD),
-            ),
-            Span::styled(
-                "· Universal AI Agent CLI",
-                Style::default().fg(Color::DarkGray),
-            ),
-        ]);
-        frame.render_widget(Paragraph::new(vec![line]), area);
     }
 }
 
@@ -260,13 +167,38 @@ fn render_conversation(frame: &mut Frame, app: &HadesApp, state: &mut TuiState, 
     let mut lines: Vec<Line<'static>> = Vec::new();
     let width = content_area.width as usize;
 
-    // 1. Welcome / Initial Guide if conversation is empty
+    // 1. Welcome / Initial Branding Guide if conversation is empty
     if state.turns.is_empty() && state.active_output.is_none() && state.error_message.is_none() {
+        lines.push(Line::from(""));
+        if width >= 60 {
+            for l in HadesTheme::banner().lines() {
+                if !l.is_empty() {
+                    lines.push(Line::from(Span::styled(
+                        format!("  {l}"),
+                        Style::default()
+                            .fg(HadesTheme::RATATUI_ORANGE)
+                            .add_modifier(Modifier::BOLD),
+                    )));
+                }
+            }
+        } else {
+            for l in HadesTheme::compact_banner().lines() {
+                if !l.is_empty() {
+                    lines.push(Line::from(Span::styled(
+                        format!("  {l}"),
+                        Style::default()
+                            .fg(HadesTheme::RATATUI_ORANGE)
+                            .add_modifier(Modifier::BOLD),
+                    )));
+                }
+            }
+        }
+
         lines.push(Line::from(""));
         lines.push(Line::from(vec![Span::styled(
             "  Welcome to Hades.",
             Style::default()
-                .fg(Color::Cyan)
+                .fg(Color::White)
                 .add_modifier(Modifier::BOLD),
         )]));
         lines.push(Line::from(vec![
@@ -277,7 +209,7 @@ fn render_conversation(frame: &mut Frame, app: &HadesApp, state: &mut TuiState, 
                     Style::default().fg(Color::Yellow)
                 } else {
                     Style::default()
-                        .fg(Color::Cyan)
+                        .fg(HadesTheme::RATATUI_ORANGE)
                         .add_modifier(Modifier::BOLD)
                 },
             ),
@@ -298,11 +230,11 @@ fn render_conversation(frame: &mut Frame, app: &HadesApp, state: &mut TuiState, 
             Span::styled(
                 "/",
                 Style::default()
-                    .fg(Color::Cyan)
+                    .fg(HadesTheme::RATATUI_ORANGE)
                     .add_modifier(Modifier::BOLD),
             ),
             Span::styled(
-                " for commands (/help, /status, /model, /exit).",
+                " for commands (/help, /model, /tools, /sessions, /new).",
                 Style::default().fg(Color::DarkGray),
             ),
         ]));
@@ -339,7 +271,7 @@ fn render_conversation(frame: &mut Frame, app: &HadesApp, state: &mut TuiState, 
         lines.push(Line::from(vec![Span::styled(
             "  You",
             Style::default()
-                .fg(Color::Cyan)
+                .fg(HadesTheme::RATATUI_ORANGE)
                 .add_modifier(Modifier::BOLD),
         )]));
 
@@ -358,7 +290,7 @@ fn render_conversation(frame: &mut Frame, app: &HadesApp, state: &mut TuiState, 
         lines.push(Line::from(vec![Span::styled(
             "  Hades",
             Style::default()
-                .fg(Color::Green)
+                .fg(HadesTheme::RATATUI_GOLD)
                 .add_modifier(Modifier::BOLD),
         )]));
 
@@ -367,9 +299,12 @@ fn render_conversation(frame: &mut Frame, app: &HadesApp, state: &mut TuiState, 
                 Span::styled("  └─ ", Style::default().fg(Color::DarkGray)),
                 Span::styled(
                     format!("{} ", state.spinner_char()),
-                    Style::default().fg(Color::Yellow),
+                    Style::default().fg(HadesTheme::RATATUI_GOLD),
                 ),
-                Span::styled(activity.clone(), Style::default().fg(Color::Yellow)),
+                Span::styled(
+                    activity.clone(),
+                    Style::default().fg(HadesTheme::RATATUI_GOLD),
+                ),
             ]));
         } else if let Some(ref response) = turn.assistant_response {
             let resp_lines = wrap_turn_text(
@@ -413,7 +348,7 @@ fn render_conversation(frame: &mut Frame, app: &HadesApp, state: &mut TuiState, 
         .track_symbol(Some("░"))
         .begin_symbol(Some("▲"))
         .end_symbol(Some("▼"))
-        .thumb_style(Style::default().fg(Color::Cyan))
+        .thumb_style(Style::default().fg(HadesTheme::RATATUI_ORANGE))
         .track_style(Style::default().fg(Color::DarkGray));
 
     let mut scrollbar_state = ScrollbarState::new(max_scroll).position(scroll_y);
@@ -424,7 +359,7 @@ fn render_conversation(frame: &mut Frame, app: &HadesApp, state: &mut TuiState, 
         let indicator_line = Line::from(vec![
             Span::styled(
                 "  ↓ New content below (press ",
-                Style::default().fg(Color::Yellow),
+                Style::default().fg(HadesTheme::RATATUI_GOLD),
             ),
             Span::styled(
                 "End",
@@ -432,7 +367,10 @@ fn render_conversation(frame: &mut Frame, app: &HadesApp, state: &mut TuiState, 
                     .fg(Color::White)
                     .add_modifier(Modifier::BOLD),
             ),
-            Span::styled(" to follow)  ", Style::default().fg(Color::Yellow)),
+            Span::styled(
+                " to follow)  ",
+                Style::default().fg(HadesTheme::RATATUI_GOLD),
+            ),
         ]);
         let indicator_width = 38u16.min(content_area.width);
         let indicator_area = Rect {
@@ -467,33 +405,83 @@ pub fn estimate_wrapped_line_count(lines: &[Line], width: u16) -> usize {
     total
 }
 
-/// Renders the fixed prompt input area directly above the status line.
-fn render_prompt_area(frame: &mut Frame, app: &HadesApp, state: &TuiState, area: Rect) {
+/// Computes the authoritative vertical layout chunks for the full TUI screen.
+///
+/// Returns 5 non-overlapping rectangular regions in order:
+/// 0. Chat conversation viewport (`Constraint::Min(1)`)
+/// 1. Input top border (`Constraint::Length(1)`)
+/// 2. Input prompt/content (`Constraint::Length(input_height)`)
+/// 3. Input bottom border (`Constraint::Length(1)`)
+/// 4. Status bar / footer (`Constraint::Length(1)`)
+pub fn compute_layout_chunks(size: Rect, input_height: u16) -> [Rect; 5] {
+    let chunks = Layout::default()
+        .direction(Direction::Vertical)
+        .constraints([
+            Constraint::Min(1),
+            Constraint::Length(1),
+            Constraint::Length(input_height.max(1)),
+            Constraint::Length(1),
+            Constraint::Length(1),
+        ])
+        .split(size);
+
+    [chunks[0], chunks[1], chunks[2], chunks[3], chunks[4]]
+}
+
+/// Calculates the dynamic height of the input prompt area based on text length, newlines, and terminal width.
+pub fn calculate_input_height(prompt: &str, width: u16, max_height: u16) -> u16 {
+    if width == 0 || max_height == 0 {
+        return 1;
+    }
+    let avail_width = (width as usize).saturating_sub(4).max(10);
+    let mut total_lines: u16 = 0;
+    for raw_line in prompt.split('\n') {
+        let char_count = raw_line.chars().count();
+        let wrapped = if char_count == 0 {
+            1
+        } else {
+            (char_count.div_ceil(avail_width) as u16).max(1)
+        };
+        total_lines = total_lines.saturating_add(wrapped);
+    }
+    total_lines.clamp(1, max_height)
+}
+
+/// Renders the full-width top horizontal border of the input box.
+pub fn render_input_top_border(frame: &mut Frame, area: Rect) {
     if area.height == 0 || area.width == 0 {
         return;
     }
-
-    let chunks = Layout::default()
-        .direction(Direction::Vertical)
-        .constraints([Constraint::Length(1), Constraint::Length(1)])
-        .split(area);
-
-    // 1. Subtle horizontal divider
     let separator = "─".repeat(area.width as usize);
     let sep_para = Paragraph::new(Line::from(vec![Span::styled(
         separator,
         Style::default().fg(Color::DarkGray),
     )]));
-    frame.render_widget(sep_para, chunks[0]);
+    frame.render_widget(sep_para, area);
+}
 
-    // 2. Terminal-native prompt line
-    let prompt_line = if app.state() == AppState::AiThinking || app.state() == AppState::AiStreaming
-    {
-        Line::from(vec![
+/// Renders the prompt input area between the top and bottom borders.
+pub fn render_input_area(frame: &mut Frame, app: &HadesApp, state: &TuiState, area: Rect) {
+    if area.height == 0 || area.width == 0 {
+        return;
+    }
+
+    let is_generating = app.state() == AppState::AiThinking || app.state() == AppState::AiStreaming;
+
+    let prompt_color = if is_generating {
+        Color::DarkGray
+    } else {
+        HadesTheme::RATATUI_ORANGE
+    };
+
+    let mut lines = Vec::new();
+
+    if is_generating {
+        lines.push(Line::from(vec![
             Span::styled(
                 " › ",
                 Style::default()
-                    .fg(Color::DarkGray)
+                    .fg(prompt_color)
                     .add_modifier(Modifier::BOLD),
             ),
             Span::styled(&state.prompt_input, Style::default().fg(Color::White)),
@@ -502,22 +490,69 @@ fn render_prompt_area(frame: &mut Frame, app: &HadesApp, state: &TuiState, area:
                 " (generating response...)",
                 Style::default().fg(Color::DarkGray),
             ),
-        ])
-    } else {
-        Line::from(vec![
+        ]));
+    } else if state.prompt_input.is_empty() {
+        lines.push(Line::from(vec![
             Span::styled(
                 " › ",
                 Style::default()
-                    .fg(Color::Cyan)
+                    .fg(prompt_color)
                     .add_modifier(Modifier::BOLD),
             ),
-            Span::styled(&state.prompt_input, Style::default().fg(Color::White)),
-            Span::styled("▌", Style::default().fg(Color::Cyan)),
-        ])
-    };
+            Span::styled("▌", Style::default().fg(HadesTheme::RATATUI_ORANGE)),
+        ]));
+    } else {
+        let prompt_lines: Vec<&str> = state.prompt_input.split('\n').collect();
+        let count = prompt_lines.len();
+        for (i, p_line) in prompt_lines.into_iter().enumerate() {
+            if i == 0 {
+                let mut spans = vec![
+                    Span::styled(
+                        " › ",
+                        Style::default()
+                            .fg(prompt_color)
+                            .add_modifier(Modifier::BOLD),
+                    ),
+                    Span::styled(p_line, Style::default().fg(Color::White)),
+                ];
+                if i == count - 1 {
+                    spans.push(Span::styled(
+                        "▌",
+                        Style::default().fg(HadesTheme::RATATUI_ORANGE),
+                    ));
+                }
+                lines.push(Line::from(spans));
+            } else {
+                let mut spans = vec![
+                    Span::styled("   ", Style::default()),
+                    Span::styled(p_line, Style::default().fg(Color::White)),
+                ];
+                if i == count - 1 {
+                    spans.push(Span::styled(
+                        "▌",
+                        Style::default().fg(HadesTheme::RATATUI_ORANGE),
+                    ));
+                }
+                lines.push(Line::from(spans));
+            }
+        }
+    }
 
-    let prompt_para = Paragraph::new(prompt_line);
-    frame.render_widget(prompt_para, chunks[1]);
+    let prompt_para = Paragraph::new(lines).wrap(Wrap { trim: false });
+    frame.render_widget(prompt_para, area);
+}
+
+/// Renders the full-width bottom horizontal border of the input box.
+pub fn render_input_bottom_border(frame: &mut Frame, area: Rect) {
+    if area.height == 0 || area.width == 0 {
+        return;
+    }
+    let separator = "─".repeat(area.width as usize);
+    let sep_para = Paragraph::new(Line::from(vec![Span::styled(
+        separator,
+        Style::default().fg(Color::DarkGray),
+    )]));
+    frame.render_widget(sep_para, area);
 }
 
 /// Renders the compact status line pinned to the bottom row of the terminal.
@@ -532,7 +567,7 @@ fn render_status_bar(frame: &mut Frame, app: &HadesApp, state: &TuiState, area: 
 
     let status_line = Line::from(vec![
         Span::styled(" ", Style::default()),
-        Span::styled("📁 ", Style::default().fg(Color::Cyan)),
+        Span::styled("📁 ", Style::default().fg(HadesTheme::RATATUI_ORANGE)),
         Span::styled(
             ws_name,
             Style::default()
@@ -550,7 +585,7 @@ fn render_status_bar(frame: &mut Frame, app: &HadesApp, state: &TuiState, area: 
                 Style::default().fg(Color::Yellow)
             } else {
                 Style::default()
-                    .fg(Color::Cyan)
+                    .fg(HadesTheme::RATATUI_ORANGE)
                     .add_modifier(Modifier::BOLD)
             },
         ),
@@ -571,7 +606,9 @@ fn render_status_bar(frame: &mut Frame, app: &HadesApp, state: &TuiState, area: 
             Span::styled("/ for commands", Style::default().fg(Color::DarkGray))
         },
         Span::styled(" · ", Style::default().fg(Color::DarkGray)),
-        Span::styled("Ctrl+C to exit", Style::default().fg(Color::DarkGray)),
+        Span::styled("Ctrl+Y Copy", Style::default().fg(HadesTheme::RATATUI_GOLD)),
+        Span::styled(" · ", Style::default().fg(Color::DarkGray)),
+        Span::styled("Ctrl+C exit", Style::default().fg(Color::DarkGray)),
     ]);
 
     let paragraph = Paragraph::new(status_line);
@@ -612,7 +649,7 @@ fn render_command_palette(frame: &mut Frame, app: &HadesApp, state: &TuiState, a
             let is_selected = idx == state.selected_palette_index;
             let style = if is_selected {
                 Style::default()
-                    .fg(Color::Cyan)
+                    .fg(HadesTheme::RATATUI_ORANGE)
                     .add_modifier(Modifier::BOLD)
             } else {
                 Style::default().fg(Color::White)
@@ -636,21 +673,23 @@ fn render_command_palette(frame: &mut Frame, app: &HadesApp, state: &TuiState, a
         .title(" Commands ")
         .title_style(
             Style::default()
-                .fg(Color::Cyan)
+                .fg(HadesTheme::RATATUI_ORANGE)
                 .add_modifier(Modifier::BOLD),
         )
         .borders(Borders::ALL)
         .border_type(BorderType::Rounded)
-        .border_style(Style::default().fg(Color::Cyan));
+        .border_style(Style::default().fg(HadesTheme::RATATUI_ORANGE));
 
     let list = List::new(items).block(block);
     frame.render_widget(list, popup_area);
 }
 
-/// Renders the floating Session Switcher modal.
-fn render_session_select(frame: &mut Frame, state: &TuiState, area: Rect) {
-    let popup_area = centered_rect(80, 65, area);
+/// Renders the floating Session Switcher modal with relative timestamps and active indicators.
+fn render_session_select(frame: &mut Frame, app: &HadesApp, state: &TuiState, area: Rect) {
+    let popup_area = centered_rect(82, 65, area);
     frame.render_widget(Clear, popup_area);
+
+    let active_id = app.active_session().map(|a| a.metadata.id.clone());
 
     let items: Vec<ListItem> = if state.sessions.is_empty() {
         vec![ListItem::new(Line::from(Span::styled(
@@ -664,9 +703,12 @@ fn render_session_select(frame: &mut Frame, state: &TuiState, area: Rect) {
             .enumerate()
             .map(|(idx, s)| {
                 let is_selected = idx == state.selected_session_index;
+                let is_active = active_id.as_deref() == Some(&s.id);
+                let time_display = hades_storage::format_session_timestamp(s.updated_at, is_active);
+
                 let style = if is_selected {
                     Style::default()
-                        .fg(Color::Cyan)
+                        .fg(HadesTheme::RATATUI_ORANGE)
                         .add_modifier(Modifier::BOLD)
                 } else {
                     Style::default().fg(Color::White)
@@ -675,10 +717,35 @@ fn render_session_select(frame: &mut Frame, state: &TuiState, area: Rect) {
                 let prefix = if is_selected { " ▸ " } else { "   " };
                 let short_id = if s.id.len() >= 8 { &s.id[..8] } else { &s.id };
                 let model_str = s.active_model.as_deref().unwrap_or("no model");
-                let updated_str = s.updated_at.format("%b %d %H:%M").to_string();
+
+                let bullet_span = if is_active {
+                    Span::styled(
+                        "● ",
+                        Style::default()
+                            .fg(HadesTheme::RATATUI_GOLD)
+                            .add_modifier(Modifier::BOLD),
+                    )
+                } else {
+                    Span::styled("○ ", Style::default().fg(Color::DarkGray))
+                };
+
+                let time_span = if is_active {
+                    Span::styled(
+                        format!("  {time_display}"),
+                        Style::default()
+                            .fg(HadesTheme::RATATUI_GOLD)
+                            .add_modifier(Modifier::BOLD),
+                    )
+                } else {
+                    Span::styled(
+                        format!("  {time_display}"),
+                        Style::default().fg(Color::DarkGray),
+                    )
+                };
 
                 let line = Line::from(vec![
                     Span::styled(prefix, style),
+                    bullet_span,
                     Span::styled(
                         format!(
                             "{:<24}",
@@ -709,10 +776,7 @@ fn render_session_select(frame: &mut Frame, state: &TuiState, area: Rect) {
                         format!(" {:>3} msgs", s.message_count),
                         Style::default().fg(Color::Green),
                     ),
-                    Span::styled(
-                        format!("  {}", updated_str),
-                        Style::default().fg(Color::DarkGray),
-                    ),
+                    time_span,
                 ]);
 
                 ListItem::new(line)
@@ -724,12 +788,95 @@ fn render_session_select(frame: &mut Frame, state: &TuiState, area: Rect) {
         .title(" Conversation Sessions  [Enter: Open | r: Rename | d: Delete | Esc: Back] ")
         .title_style(
             Style::default()
-                .fg(Color::Cyan)
+                .fg(HadesTheme::RATATUI_ORANGE)
                 .add_modifier(Modifier::BOLD),
         )
         .borders(Borders::ALL)
         .border_type(BorderType::Rounded)
-        .border_style(Style::default().fg(Color::Cyan));
+        .border_style(Style::default().fg(HadesTheme::RATATUI_ORANGE));
+
+    let list = List::new(items).block(block);
+    frame.render_widget(list, popup_area);
+}
+
+/// Renders the floating Copy Mode modal for selecting conversation turns to copy.
+fn render_copy_select(frame: &mut Frame, state: &TuiState, area: Rect) {
+    let popup_area = centered_rect(82, 65, area);
+    frame.render_widget(Clear, popup_area);
+
+    let items: Vec<ListItem> = if state.turns.is_empty() {
+        vec![ListItem::new(Line::from(Span::styled(
+            "   No conversation turns available to copy. Press Esc to return.",
+            Style::default().fg(Color::DarkGray),
+        )))]
+    } else {
+        state
+            .turns
+            .iter()
+            .enumerate()
+            .map(|(idx, turn)| {
+                let is_selected = idx == state.copy_selected_turn_index;
+                let style = if is_selected {
+                    Style::default()
+                        .fg(HadesTheme::RATATUI_ORANGE)
+                        .add_modifier(Modifier::BOLD)
+                } else {
+                    Style::default().fg(Color::White)
+                };
+
+                let prefix = if is_selected { " ▸ " } else { "   " };
+                let turn_num = idx + 1;
+
+                let prompt_preview = if turn.user_prompt.len() > 36 {
+                    format!("{}...", &turn.user_prompt[..33])
+                } else {
+                    turn.user_prompt.clone()
+                };
+
+                let resp_preview = if let Some(ref resp) = turn.assistant_response {
+                    let first_line = resp.lines().next().unwrap_or("");
+                    if first_line.len() > 36 {
+                        format!("{}...", &first_line[..33])
+                    } else {
+                        first_line.to_string()
+                    }
+                } else if let Some(ref err) = turn.error_text {
+                    format!("Error: {err}")
+                } else {
+                    "(generating...)".to_string()
+                };
+
+                let line = Line::from(vec![
+                    Span::styled(prefix, style),
+                    Span::styled(
+                        format!("[Turn {turn_num}] "),
+                        Style::default().fg(HadesTheme::RATATUI_GOLD),
+                    ),
+                    Span::styled(
+                        format!("You: {:<38} ", prompt_preview),
+                        style.add_modifier(Modifier::BOLD),
+                    ),
+                    Span::styled(
+                        format!("| Hades: {}", resp_preview),
+                        Style::default().fg(Color::DarkGray),
+                    ),
+                ]);
+
+                ListItem::new(line)
+            })
+            .collect()
+    };
+
+    let block = Block::default()
+        .title(" Copy Turn to Clipboard  [↑/↓: Select | Enter / y: Copy Turn | a: Copy All | Esc: Back] ")
+        .title_style(
+            Style::default()
+                .fg(HadesTheme::RATATUI_ORANGE)
+                .add_modifier(Modifier::BOLD),
+        )
+        .borders(Borders::ALL)
+        .border_type(BorderType::Rounded)
+        .border_style(Style::default().fg(HadesTheme::RATATUI_ORANGE));
 
     let list = List::new(items).block(block);
     frame.render_widget(list, popup_area);
@@ -754,12 +901,12 @@ fn render_session_rename(frame: &mut Frame, state: &TuiState, area: Rect) {
         .title(" Rename Session ")
         .title_style(
             Style::default()
-                .fg(Color::Cyan)
+                .fg(HadesTheme::RATATUI_ORANGE)
                 .add_modifier(Modifier::BOLD),
         )
         .borders(Borders::ALL)
         .border_type(BorderType::Rounded)
-        .border_style(Style::default().fg(Color::Cyan));
+        .border_style(Style::default().fg(HadesTheme::RATATUI_ORANGE));
     frame.render_widget(block, popup_area);
 
     let prompt_p =
@@ -768,11 +915,11 @@ fn render_session_rename(frame: &mut Frame, state: &TuiState, area: Rect) {
 
     let input_block = Block::default()
         .borders(Borders::ALL)
-        .border_style(Style::default().fg(Color::Yellow));
+        .border_style(Style::default().fg(HadesTheme::RATATUI_GOLD));
     let input_p = Paragraph::new(format!("{}█", state.rename_input))
         .style(
             Style::default()
-                .fg(Color::Yellow)
+                .fg(HadesTheme::RATATUI_GOLD)
                 .add_modifier(Modifier::BOLD),
         )
         .block(input_block);
@@ -834,7 +981,7 @@ fn render_session_delete_confirm(frame: &mut Frame, state: &TuiState, area: Rect
     let btn_style_can = if state.delete_confirm_action == 1 {
         Style::default()
             .fg(Color::Black)
-            .bg(Color::Cyan)
+            .bg(HadesTheme::RATATUI_ORANGE)
             .add_modifier(Modifier::BOLD)
     } else {
         Style::default().fg(Color::DarkGray)
@@ -863,7 +1010,7 @@ fn render_provider_select(frame: &mut Frame, state: &TuiState, area: Rect) {
             let is_selected = idx == state.selected_provider_index;
             let style = if is_selected {
                 Style::default()
-                    .fg(Color::Cyan)
+                    .fg(HadesTheme::RATATUI_ORANGE)
                     .add_modifier(Modifier::BOLD)
             } else {
                 Style::default().fg(Color::White)
@@ -873,7 +1020,7 @@ fn render_provider_select(frame: &mut Frame, state: &TuiState, area: Rect) {
             let (badge, badge_color) = if p.is_local {
                 ("[Local]", Color::Green)
             } else {
-                ("[Cloud]", Color::Blue)
+                ("[Cloud]", HadesTheme::RATATUI_GOLD)
             };
 
             let line = Line::from(vec![
@@ -897,12 +1044,12 @@ fn render_provider_select(frame: &mut Frame, state: &TuiState, area: Rect) {
         .title(" Select AI Provider / Engine ")
         .title_style(
             Style::default()
-                .fg(Color::Cyan)
+                .fg(HadesTheme::RATATUI_ORANGE)
                 .add_modifier(Modifier::BOLD),
         )
         .borders(Borders::ALL)
         .border_type(BorderType::Rounded)
-        .border_style(Style::default().fg(Color::Cyan));
+        .border_style(Style::default().fg(HadesTheme::RATATUI_ORANGE));
 
     let list = List::new(items).block(block);
     frame.render_widget(list, popup_area);
@@ -921,7 +1068,7 @@ fn render_model_select(frame: &mut Frame, state: &TuiState, area: Rect) {
             let is_selected = idx == state.selected_model_index;
             let style = if is_selected {
                 Style::default()
-                    .fg(Color::Cyan)
+                    .fg(HadesTheme::RATATUI_ORANGE)
                     .add_modifier(Modifier::BOLD)
             } else {
                 Style::default().fg(Color::White)
@@ -948,12 +1095,12 @@ fn render_model_select(frame: &mut Frame, state: &TuiState, area: Rect) {
         .title(" Select Model ")
         .title_style(
             Style::default()
-                .fg(Color::Cyan)
+                .fg(HadesTheme::RATATUI_ORANGE)
                 .add_modifier(Modifier::BOLD),
         )
         .borders(Borders::ALL)
         .border_type(BorderType::Rounded)
-        .border_style(Style::default().fg(Color::Cyan));
+        .border_style(Style::default().fg(HadesTheme::RATATUI_ORANGE));
 
     let list = List::new(items).block(block);
     frame.render_widget(list, popup_area);
@@ -976,7 +1123,7 @@ fn render_model_info(frame: &mut Frame, state: &TuiState, area: Rect) {
             Span::styled(
                 &model.display_name,
                 Style::default()
-                    .fg(Color::Cyan)
+                    .fg(HadesTheme::RATATUI_ORANGE)
                     .add_modifier(Modifier::BOLD),
             ),
             Span::styled(
@@ -986,13 +1133,16 @@ fn render_model_info(frame: &mut Frame, state: &TuiState, area: Rect) {
         ]),
         Line::from(vec![
             Span::styled("  Provider: ", Style::default().fg(Color::DarkGray)),
-            Span::styled(&model.provider_id, Style::default().fg(Color::Yellow)),
+            Span::styled(
+                &model.provider_id,
+                Style::default().fg(HadesTheme::RATATUI_GOLD),
+            ),
         ]),
         Line::from(""),
         Line::from(Span::styled(
             "  Capabilities:",
             Style::default()
-                .fg(Color::Cyan)
+                .fg(HadesTheme::RATATUI_ORANGE)
                 .add_modifier(Modifier::BOLD),
         )),
     ];
@@ -1037,12 +1187,12 @@ fn render_model_info(frame: &mut Frame, state: &TuiState, area: Rect) {
         .title(" Model Details ")
         .title_style(
             Style::default()
-                .fg(Color::Cyan)
+                .fg(HadesTheme::RATATUI_ORANGE)
                 .add_modifier(Modifier::BOLD),
         )
         .borders(Borders::ALL)
         .border_type(BorderType::Rounded)
-        .border_style(Style::default().fg(Color::Cyan));
+        .border_style(Style::default().fg(HadesTheme::RATATUI_ORANGE));
 
     let paragraph = Paragraph::new(lines)
         .block(block)
@@ -1068,7 +1218,7 @@ fn render_credential_input(frame: &mut Frame, state: &TuiState, area: Rect) {
             Span::styled(
                 "  API Key: ",
                 Style::default()
-                    .fg(Color::Cyan)
+                    .fg(HadesTheme::RATATUI_ORANGE)
                     .add_modifier(Modifier::BOLD),
             ),
             Span::styled(
@@ -1077,7 +1227,7 @@ fn render_credential_input(frame: &mut Frame, state: &TuiState, area: Rect) {
                 } else {
                     format!("{masked_key}▌")
                 },
-                Style::default().fg(Color::Yellow),
+                Style::default().fg(HadesTheme::RATATUI_GOLD),
             ),
         ]),
         Line::from(""),
@@ -1106,12 +1256,12 @@ fn render_credential_input(frame: &mut Frame, state: &TuiState, area: Rect) {
         .title(" Credential Setup ")
         .title_style(
             Style::default()
-                .fg(Color::Cyan)
+                .fg(HadesTheme::RATATUI_ORANGE)
                 .add_modifier(Modifier::BOLD),
         )
         .borders(Borders::ALL)
         .border_type(BorderType::Rounded)
-        .border_style(Style::default().fg(Color::Cyan));
+        .border_style(Style::default().fg(HadesTheme::RATATUI_ORANGE));
 
     let paragraph = Paragraph::new(lines)
         .block(block)
@@ -1130,7 +1280,7 @@ fn render_verifying(frame: &mut Frame, state: &TuiState, area: Rect) {
             Span::styled(
                 format!("  {} ", state.spinner_char()),
                 Style::default()
-                    .fg(Color::Yellow)
+                    .fg(HadesTheme::RATATUI_GOLD)
                     .add_modifier(Modifier::BOLD),
             ),
             Span::styled(
@@ -1151,12 +1301,12 @@ fn render_verifying(frame: &mut Frame, state: &TuiState, area: Rect) {
         .title(" Connecting ")
         .title_style(
             Style::default()
-                .fg(Color::Yellow)
+                .fg(HadesTheme::RATATUI_GOLD)
                 .add_modifier(Modifier::BOLD),
         )
         .borders(Borders::ALL)
         .border_type(BorderType::Rounded)
-        .border_style(Style::default().fg(Color::Yellow));
+        .border_style(Style::default().fg(HadesTheme::RATATUI_GOLD));
 
     let paragraph = Paragraph::new(lines)
         .block(block)
@@ -1262,9 +1412,9 @@ fn render_tool_approval(frame: &mut Frame, app: &HadesApp, state: &TuiState, are
 
     let risk_color = match risk_level {
         hades_tools::RiskLevel::Safe => Color::Green,
-        hades_tools::RiskLevel::Low => Color::Cyan,
+        hades_tools::RiskLevel::Low => HadesTheme::RATATUI_GOLD,
         hades_tools::RiskLevel::Medium => Color::Yellow,
-        hades_tools::RiskLevel::High => Color::Rgb(255, 140, 0),
+        hades_tools::RiskLevel::High => HadesTheme::RATATUI_FIRE,
         hades_tools::RiskLevel::Critical => Color::Red,
     };
 
@@ -1272,7 +1422,7 @@ fn render_tool_approval(frame: &mut Frame, app: &HadesApp, state: &TuiState, are
         .title(Span::styled(
             " ⚠️ Tool Execution Authorization ",
             Style::default()
-                .fg(Color::Yellow)
+                .fg(HadesTheme::RATATUI_GOLD)
                 .add_modifier(Modifier::BOLD),
         ))
         .borders(Borders::ALL)
@@ -1298,7 +1448,7 @@ fn render_tool_approval(frame: &mut Frame, app: &HadesApp, state: &TuiState, are
         Span::styled(
             call_name,
             Style::default()
-                .fg(Color::Cyan)
+                .fg(HadesTheme::RATATUI_ORANGE)
                 .add_modifier(Modifier::BOLD),
         ),
         Span::styled("   Risk: ", Style::default().fg(Color::White)),
@@ -1357,7 +1507,7 @@ fn render_tool_approval(frame: &mut Frame, app: &HadesApp, state: &TuiState, are
             let style = if is_selected {
                 Style::default()
                     .fg(Color::Black)
-                    .bg(Color::Cyan)
+                    .bg(HadesTheme::RATATUI_ORANGE)
                     .add_modifier(Modifier::BOLD)
             } else {
                 Style::default().fg(Color::DarkGray)

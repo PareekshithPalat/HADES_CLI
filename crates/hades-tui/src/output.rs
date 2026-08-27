@@ -32,27 +32,27 @@ impl ConversationPrinter {
             );
             println!(
                 "    {}█   █   ███   ████   █████   ████ {}",
-                HadesTheme::CYAN_BOLD,
+                HadesTheme::FIRE_ORANGE_BOLD,
                 HadesTheme::RESET
             );
             println!(
                 "    {}█   █  █   █  █   █  █       █    {}",
-                HadesTheme::CYAN_BOLD,
+                HadesTheme::FIRE_ORANGE_BOLD,
                 HadesTheme::RESET
             );
             println!(
                 "    {}█████  █████  █   █  ████     ███ {}",
-                HadesTheme::CYAN_BOLD,
+                HadesTheme::FIRE_ORANGE_BOLD,
                 HadesTheme::RESET
             );
             println!(
                 "    {}█   █  █   █  █   █  █           █{}",
-                HadesTheme::CYAN_BOLD,
+                HadesTheme::FIRE_ORANGE_BOLD,
                 HadesTheme::RESET
             );
             println!(
                 "    {}█   █  █   █  ████   █████   ████ {}",
-                HadesTheme::CYAN_BOLD,
+                HadesTheme::FIRE_ORANGE_BOLD,
                 HadesTheme::RESET
             );
             println!();
@@ -70,7 +70,7 @@ impl ConversationPrinter {
             );
             println!(
                 "              {}H A D E S{}",
-                HadesTheme::CYAN_BOLD,
+                HadesTheme::FIRE_ORANGE_BOLD,
                 HadesTheme::RESET
             );
             println!(
@@ -84,15 +84,15 @@ impl ConversationPrinter {
         println!();
         println!("  \x1b[1;37mWelcome to Hades.\x1b[0m");
         if active_model == "Not configured" {
-            println!("  \x1b[90mActive model:\x1b[0m \x1b[33mNot configured\x1b[0m (\x1b[1;36m/model\x1b[0m to configure)");
+            println!("  \x1b[90mActive model:\x1b[0m \x1b[33mNot configured\x1b[0m (\x1b[1;38;5;208m/model\x1b[0m to configure)");
         } else {
             println!(
-                "  \x1b[90mActive model:\x1b[0m \x1b[1;36m{}\x1b[0m",
+                "  \x1b[90mActive model:\x1b[0m \x1b[1;38;5;208m{}\x1b[0m",
                 active_model
             );
         }
         println!();
-        println!("  \x1b[90mType a prompt and press \x1b[1;37mEnter\x1b[0m\x1b[90m to chat, or \x1b[1;36m/\x1b[0m\x1b[90m for commands (/help, /model, /exit).\x1b[0m");
+        println!("  \x1b[90mType a prompt and press \x1b[1;37mEnter\x1b[0m\x1b[90m to chat, or \x1b[1;38;5;208m/\x1b[0m\x1b[90m for commands (/help, /model, /exit).\x1b[0m");
         println!();
         let _ = out.flush();
     }

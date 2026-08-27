@@ -7,6 +7,7 @@ pub mod process;
 pub mod registry;
 pub mod security;
 pub mod shell;
+pub mod system;
 pub mod workspace;
 pub mod workspace_tools;
 
@@ -16,6 +17,13 @@ pub use error::ToolError;
 pub use registry::ToolRegistry;
 pub use security::{
     ApprovalDecision, EvaluationResult, PathSecurity, PermissionEngine, SecretRedactor,
+};
+pub use system::{
+    format_uptime, SystemArchitectureTool, SystemHostnameTool, SystemInfoTool,
+    SystemNetworkConnectionsTool, SystemNetworkInterfacesTool, SystemNetworkPortCheckTool,
+    SystemNetworkPortProcessTool, SystemPlatformTool, SystemProcessFindTool,
+    SystemProcessInspectTool, SystemProcessListTool, SystemProcessTerminateTool,
+    SystemRuntimeVersionTool, SystemRuntimeWhichTool, SystemUptimeTool,
 };
 pub use workspace::{ProjectType, WorkspaceDetector, WorkspaceMetadata};
 
@@ -28,7 +36,7 @@ mod tests {
     #[test]
     fn test_default_registry_contains_all_standard_tools() {
         let registry = ToolRegistry::default_registry();
-        assert_eq!(registry.count(), 14);
+        assert_eq!(registry.count(), 29);
         assert!(registry.contains("filesystem.list"));
         assert!(registry.contains("filesystem.read"));
         assert!(registry.contains("filesystem.create"));
@@ -43,6 +51,21 @@ mod tests {
         assert!(registry.contains("environment.unset"));
         assert!(registry.contains("workspace.inspect"));
         assert!(registry.contains("workspace.detect"));
+        assert!(registry.contains("system.info"));
+        assert!(registry.contains("system.platform"));
+        assert!(registry.contains("system.architecture"));
+        assert!(registry.contains("system.hostname"));
+        assert!(registry.contains("system.uptime"));
+        assert!(registry.contains("system.process.list"));
+        assert!(registry.contains("system.process.inspect"));
+        assert!(registry.contains("system.process.find"));
+        assert!(registry.contains("system.process.terminate"));
+        assert!(registry.contains("system.network.interfaces"));
+        assert!(registry.contains("system.network.port_check"));
+        assert!(registry.contains("system.network.port_process"));
+        assert!(registry.contains("system.network.connections"));
+        assert!(registry.contains("system.runtime.which"));
+        assert!(registry.contains("system.runtime.version"));
     }
 
     #[test]

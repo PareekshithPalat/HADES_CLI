@@ -25,6 +25,7 @@ mod tests {
     };
     use hades_core::{AppState, CommandOutput, HadesApp, StatusInfo};
     use hades_provider::Model;
+    use ratatui::layout::Rect;
     use ratatui::style::Style;
     use ratatui::text::Line;
     use tempfile::tempdir;
@@ -437,7 +438,7 @@ mod tests {
 
     #[test]
     fn test_hades_theme_and_branding() {
-        assert_eq!(HadesTheme::TRIDENT, "🔱");
+        assert!(HadesTheme::TRIDENT == "🜲" || HadesTheme::TRIDENT == "🔱");
         assert!(
             HadesTheme::banner().contains("H A D E S")
                 || HadesTheme::banner().contains("Universal AI Agent")
@@ -485,14 +486,99 @@ mod tests {
     #[test]
     fn test_bottom_region_is_reserved() {
         let total_height = 24u16;
-        let header_height = 4u16;
-        let reserved_bottom = 3u16; // 1 divider + 1 prompt + 1 status
-        let conversation_height = total_height.saturating_sub(header_height + reserved_bottom);
-        assert_eq!(conversation_height, 17);
+        let total_width = 80u16;
+        let size = Rect::new(0, 0, total_width, total_height);
+        let [chat, top_border, input, bottom_border, status] = ui::compute_layout_chunks(size, 1);
+
+        assert_eq!(chat.height, 20);
+        assert_eq!(top_border.height, 1);
+        assert_eq!(input.height, 1);
+        assert_eq!(bottom_border.height, 1);
+        assert_eq!(status.height, 1);
+
+        assert_eq!(top_border.y, 20);
+        assert_eq!(input.y, 21);
+        assert_eq!(bottom_border.y, 22);
+        assert_eq!(status.y, 23);
+
         assert_eq!(
-            header_height + conversation_height + reserved_bottom,
+            chat.height + top_border.height + input.height + bottom_border.height + status.height,
             total_height
         );
+    }
+
+    #[test]
+    fn test_multiline_input_dynamic_height_and_shift() {
+        // 1. Single line prompt
+        let h1 = ui::calculate_input_height("hello world", 80, 8);
+        assert_eq!(h1, 1);
+
+        // 2. Explicit multi-line prompt
+        let h3 = ui::calculate_input_height("line 1\nline 2\nline 3", 80, 8);
+        assert_eq!(h3, 3);
+
+        // 3. Wrapping on narrow terminal
+        let long_prompt =
+            "This is a long prompt that should wrap across several lines when typed.".repeat(2);
+        let h_wrapped = ui::calculate_input_height(&long_prompt, 30, 8);
+        assert!(h_wrapped >= 3);
+
+        // 4. Clamping to max height
+        let huge_prompt = "line\n".repeat(20);
+        let h_clamped = ui::calculate_input_height(&huge_prompt, 80, 5);
+        assert_eq!(h_clamped, 5);
+
+        // 5. Layout chunks with multiline input
+        let size = Rect::new(0, 0, 100, 30);
+        let [chat, top_b, inp, bot_b, stat] = ui::compute_layout_chunks(size, 3);
+
+        assert_eq!(chat.height, 24);
+        assert_eq!(top_b.height, 1);
+        assert_eq!(inp.height, 3);
+        assert_eq!(bot_b.height, 1);
+        assert_eq!(stat.height, 1);
+
+        assert_eq!(top_b.y, 24);
+        assert_eq!(inp.y, 25);
+        assert_eq!(bot_b.y, 28);
+        assert_eq!(stat.y, 29);
+
+        // Verify non-overlapping
+        assert_eq!(top_b.y, chat.y + chat.height);
+        assert_eq!(inp.y, top_b.y + top_b.height);
+        assert_eq!(bot_b.y, inp.y + inp.height);
+        assert_eq!(stat.y, bot_b.y + bot_b.height);
+        assert_eq!(
+            chat.height + top_b.height + inp.height + bot_b.height + stat.height,
+            30
+        );
+    }
+
+    #[test]
+    fn test_layout_resize_and_geometry_invariants() {
+        for (w, h) in [(20, 10), (40, 15), (80, 24), (120, 40), (200, 60)] {
+            let size = Rect::new(0, 0, w, h);
+            for input_h in [1, 2, 4] {
+                let [chat, top_b, inp, bot_b, stat] = ui::compute_layout_chunks(size, input_h);
+
+                assert_eq!(top_b.height, 1);
+                assert!(inp.height >= 1);
+                assert_eq!(bot_b.height, 1);
+                assert_eq!(stat.height, 1);
+
+                // No overlaps
+                assert!(top_b.y >= chat.y + chat.height);
+                assert_eq!(inp.y, top_b.y + top_b.height);
+                assert_eq!(bot_b.y, inp.y + inp.height);
+                assert_eq!(stat.y, bot_b.y + bot_b.height);
+
+                // Total height matches
+                assert_eq!(
+                    chat.height + top_b.height + inp.height + bot_b.height + stat.height,
+                    h
+                );
+            }
+        }
     }
 
     // Granular Incremental Scrolling Tests

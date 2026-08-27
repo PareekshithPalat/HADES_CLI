@@ -20,7 +20,7 @@ impl PromptManager {
         } else {
             format!(
                 "{}{}{}",
-                HadesTheme::CYAN_BOLD,
+                HadesTheme::ORANGE_BOLD,
                 active_model,
                 HadesTheme::RESET
             )
@@ -35,7 +35,7 @@ impl PromptManager {
         // 2. Print Prompt line (Line 1)
         print!(
             "\r\x1b[2K  {}›{} {}▌",
-            HadesTheme::CYAN_BOLD,
+            HadesTheme::ORANGE_BOLD,
             HadesTheme::RESET,
             prompt_input
         );

@@ -50,6 +50,9 @@ pub enum AppState {
     /// Explicit user authorization required for tool execution.
     ToolApproval,
 
+    /// Interactive conversation turn selection and clipboard copy mode.
+    CopySelect,
+
     /// Graceful shutdown in progress (flushing state, releasing resources).
     ShuttingDown,
 
@@ -73,7 +76,12 @@ impl AppState {
             (AppState::Running, AppState::AiThinking) => true,
             (AppState::Running, AppState::AiStreaming) => true,
             (AppState::Running, AppState::ToolApproval) => true,
+            (AppState::Running, AppState::CopySelect) => true,
             (AppState::Running, AppState::ShuttingDown) => true,
+
+            // From CopySelect
+            (AppState::CopySelect, AppState::Running) => true,
+            (AppState::CopySelect, AppState::ShuttingDown) => true,
 
             // From CommandPalette
             (AppState::CommandPalette, AppState::Running) => true,

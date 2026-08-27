@@ -226,6 +226,25 @@ impl ToolResult {
         }
     }
 
+    /// Creates a timed-out tool result.
+    pub fn timed_out(
+        call_id: impl Into<String>,
+        tool_name: impl Into<String>,
+        error: impl Into<String>,
+    ) -> Self {
+        let err_str = error.into();
+        Self {
+            call_id: call_id.into(),
+            tool_name: tool_name.into(),
+            status: ToolStatus::TimedOut,
+            output: String::new(),
+            error: Some(err_str),
+            metadata: serde_json::json!({}),
+            is_truncated: false,
+            artifact_id: None,
+        }
+    }
+
     /// Sets metadata payload.
     pub fn with_metadata(mut self, metadata: serde_json::Value) -> Self {
         self.metadata = metadata;

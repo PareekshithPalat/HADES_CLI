@@ -84,8 +84,34 @@ impl fmt::Display for CommandOutput {
                 writeln!(f, "HADES COMMANDS")?;
                 writeln!(f)?;
                 for entry in entries {
-                    writeln!(f, "{:<12} {}", entry.name, entry.description)?;
+                    writeln!(f, "  {:<14} {}", entry.name, entry.description)?;
                 }
+                writeln!(f)?;
+                writeln!(f, "KEYBOARD SHORTCUTS & CONTROLS")?;
+                writeln!(f, "  {:<14} Submit prompt / Confirm selection", "Enter")?;
+                writeln!(
+                    f,
+                    "  {:<14} Copy selected conversation / assistant response to clipboard",
+                    "Ctrl+Y"
+                )?;
+                writeln!(
+                    f,
+                    "  {:<14} Interrupt active response / Shutdown Hades",
+                    "Ctrl+C"
+                )?;
+                writeln!(f, "  {:<14} Open interactive command palette", "/")?;
+                writeln!(
+                    f,
+                    "  {:<14} Scroll conversation / Navigate lists & palettes",
+                    "Up / Down"
+                )?;
+                writeln!(f, "  {:<14} Scroll conversation by page", "PageUp / PageDn")?;
+                writeln!(
+                    f,
+                    "  {:<14} Jump to top / bottom of conversation",
+                    "Home / End"
+                )?;
+                writeln!(f, "  {:<14} Dismiss active modal / Close palette", "Esc")?;
                 Ok(())
             }
             Self::Status(status) => write!(f, "{}", status),
@@ -388,21 +414,82 @@ impl Command for ToolsCommand {
 
     fn execute(&self, context: &mut CommandContext) -> Result<CommandOutput, CommandError> {
         let mut output = String::from("HADES TOOLS & CAPABILITIES\n\n");
-        output.push_str(&format!(
-            "{:<20} {:<10} {:<8} {}\n",
-            "NAME", "RISK", "MUTATING", "DESCRIPTION"
-        ));
-        output.push_str(&format!("{:-<20} {:-<10} {:-<8} {:-<40}\n", "", "", "", ""));
 
         if let Some(reg) = context.tool_registry {
-            for def in reg.list() {
-                output.push_str(&format!(
-                    "{:<20} {:<10} {:<8} {}\n",
-                    def.name,
-                    def.risk_level.to_string(),
-                    if def.is_mutating { "yes" } else { "no" },
-                    def.description
-                ));
+            let tools = reg.list();
+
+            let categories = [
+                ("FILESYSTEM TOOLS (Workspace-Bound)", "filesystem."),
+                ("WORKSPACE TOOLS (Workspace-Bound)", "workspace."),
+                ("SHELL & EXECUTION TOOLS", "shell."),
+                ("ENVIRONMENT TOOLS (System-Wide)", "environment."),
+                (
+                    "SYSTEM DIAGNOSTIC & PROCESS TOOLS (System-Wide)",
+                    "system.process.",
+                ),
+                (
+                    "SYSTEM DIAGNOSTIC & RUNTIME TOOLS (System-Wide)",
+                    "system.runtime.",
+                ),
+                ("SYSTEM INFORMATION TOOLS (System-Wide)", "system.info"),
+                ("NETWORK DIAGNOSTIC TOOLS (System-Wide)", "system.network."),
+            ];
+
+            for (cat_name, prefix) in categories {
+                let cat_tools: Vec<_> = if cat_name.contains("INFORMATION") {
+                    tools
+                        .iter()
+                        .filter(|t| {
+                            t.name == "system.info"
+                                || t.name == "system.platform"
+                                || t.name == "system.architecture"
+                                || t.name == "system.hostname"
+                                || t.name == "system.uptime"
+                        })
+                        .collect()
+                } else {
+                    tools
+                        .iter()
+                        .filter(|t| t.name.starts_with(prefix))
+                        .collect()
+                };
+
+                if !cat_tools.is_empty() {
+                    output.push_str(&format!("── {cat_name} ──\n"));
+                    for def in cat_tools {
+                        let scope = if def.name.starts_with("filesystem.")
+                            || def.name.starts_with("workspace.")
+                        {
+                            "Workspace-Bound"
+                        } else {
+                            "System-Wide"
+                        };
+
+                        let params = if let Some(props) = def
+                            .parameters_schema
+                            .get("properties")
+                            .and_then(|p| p.as_object())
+                        {
+                            if props.is_empty() {
+                                "none".to_string()
+                            } else {
+                                props.keys().cloned().collect::<Vec<_>>().join(", ")
+                            }
+                        } else {
+                            "none".to_string()
+                        };
+
+                        output.push_str(&format!(
+                            "  • {:<26} [{:<6} | mut: {:<3} | {}]\n    Params: {}\n    {}\n\n",
+                            def.name,
+                            def.risk_level.to_string(),
+                            if def.is_mutating { "yes" } else { "no" },
+                            scope,
+                            params,
+                            def.description
+                        ));
+                    }
+                }
             }
         } else {
             output.push_str("No active tool registry available.\n");
