@@ -1,8 +1,6 @@
 <div align="center">
 
-<img src="assets/hades_trident_logo.jpg" alt="Hades Logo" width="130" height="130" style="border-radius: 16px;" />
-
-# HADES
+# **HADES-CLI**
 ### Universal AI Agent CLI
 
 [![Release](https://img.shields.io/badge/Release-Beta%20v0.1.1-FF5500?style=for-the-badge&logoColor=white)](https://github.com/PareekshithPalat/HADES_CLI)
