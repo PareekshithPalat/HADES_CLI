@@ -8,6 +8,7 @@ use crate::error::CoreError;
 use crate::state::AppState;
 use hades_config::{ActiveModelConfig, ConfigService, HadesConfig};
 use hades_events::{EventBus, HadesEvent};
+use hades_mcp::McpServerManager;
 use hades_provider::{
     CompletionRequest, CompletionResponse, Credential, CredentialBackend, FileCredentialBackend,
     Model, ModelManager, OpenAiProvider, StreamResult, Usage,
@@ -49,6 +50,7 @@ pub struct HadesApp {
     tool_registry: ToolRegistry,
     permission_engine: PermissionEngine,
     pending_approval: Option<PendingApproval>,
+    mcp_manager: McpServerManager,
     version: &'static str,
 }
 
@@ -82,6 +84,8 @@ impl HadesApp {
         let workspace_info = WorkspaceDetector::detect(&current_dir);
         let tool_registry = ToolRegistry::default_registry();
         let permission_engine = PermissionEngine::new();
+        let mcp_manager =
+            McpServerManager::new(&workspace_info.current_dir).with_event_bus(event_bus.clone());
 
         Self {
             state: AppState::Startup,
@@ -99,6 +103,7 @@ impl HadesApp {
             tool_registry,
             permission_engine,
             pending_approval: None,
+            mcp_manager,
             version: APP_VERSION,
         }
     }
@@ -272,6 +277,11 @@ impl HadesApp {
         ));
         self.active_session = Some(new_session);
 
+        // Auto-start and synchronize configured MCP servers
+        self.mcp_manager.load_from_config(&self.config.mcp).await;
+        self.mcp_manager.auto_start_servers().await;
+        self.sync_mcp_tools().await;
+
         Ok(None)
     }
 
@@ -406,6 +416,49 @@ impl HadesApp {
     /// Returns mutable reference to the permission engine.
     pub fn permission_engine_mut(&mut self) -> &mut PermissionEngine {
         &mut self.permission_engine
+    }
+
+    /// Returns the MCP server manager reference.
+    pub fn mcp_manager(&self) -> &McpServerManager {
+        &self.mcp_manager
+    }
+
+    /// Returns mutable reference to the MCP server manager.
+    pub fn mcp_manager_mut(&mut self) -> &mut McpServerManager {
+        &mut self.mcp_manager
+    }
+
+    /// Synchronizes discovered MCP tools from active servers into the core tool registry.
+    pub async fn sync_mcp_tools(&mut self) -> usize {
+        let mcp_tools = self.mcp_manager.discover_all_tools().await;
+        let count = mcp_tools.len();
+        for tool in mcp_tools {
+            self.tool_registry.register_arc(tool);
+        }
+        info!(count = count, "Synchronized MCP tools into registry");
+        count
+    }
+
+    /// Connects to a named MCP server and synchronizes its tools into Hades.
+    pub async fn connect_mcp_server(&mut self, server_name: &str) -> Result<(), CoreError> {
+        self.mcp_manager
+            .start_server(server_name)
+            .await
+            .map_err(|e| CoreError::Runtime(e.to_string()))?;
+        self.sync_mcp_tools().await;
+        Ok(())
+    }
+
+    /// Disconnects a named MCP server and refreshes the tool registry.
+    pub async fn disconnect_mcp_server(&mut self, server_name: &str) -> Result<(), CoreError> {
+        self.mcp_manager
+            .stop_server(server_name)
+            .await
+            .map_err(|e| CoreError::Runtime(e.to_string()))?;
+        // Reset to default native tools + remaining MCP tools
+        self.tool_registry = ToolRegistry::default_registry();
+        self.sync_mcp_tools().await;
+        Ok(())
     }
 
     /// Returns the pending tool approval request, if any.
@@ -1037,8 +1090,36 @@ impl HadesApp {
             - Process tools: system.process.list (lists running processes with CPU/memory), system.process.inspect (inspects process by PID), system.process.find (finds process by name/query).\n\
             - Network tools: system.network.port_check (checks if a port is in use), system.network.port_process (identifies PID/process using a port), system.network.interfaces, system.network.connections.\n\
             - Runtime tools: system.runtime.which (finds executable in PATH), system.runtime.version (inspects installed runtime version).\n\
-            - Shell & execution tools: shell.execute.\n\
-            CRITICAL RULES:\n\
+            - Shell & execution tools: shell.execute.\n"
+        );
+
+        let mcp_tools: Vec<_> = self
+            .tool_registry
+            .list()
+            .into_iter()
+            .filter(|t| {
+                t.name.contains('.')
+                    && !t.name.starts_with("system.")
+                    && !t.name.starts_with("filesystem.")
+                    && !t.name.starts_with("workspace.")
+                    && !t.name.starts_with("shell.")
+                    && !t.name.starts_with("environment.")
+            })
+            .collect();
+
+        if !mcp_tools.is_empty() {
+            sys.push_str("            - External Model Context Protocol (MCP) tools: ");
+            let tool_names = mcp_tools
+                .iter()
+                .map(|t| t.name.as_str())
+                .collect::<Vec<_>>()
+                .join(", ");
+            sys.push_str(&tool_names);
+            sys.push_str(".\n");
+        }
+
+        sys.push_str(
+            "            CRITICAL RULES:\n\
             1. Whenever the user asks to list files, read a file, create/modify files, or run commands, you MUST invoke the appropriate tool directly.\n\
             2. Whenever the user asks diagnostic questions about their system (e.g. running processes, what is using a port, installed runtime versions, PATH lookup, environment variables, OS details), you MUST invoke the corresponding system tool. DO NOT say you don't have access to the system when a tool is available.\n\
             3. DO NOT output code snippets or Python scripts explaining how the user can perform the task if a tool is available—INVOKE THE TOOL.\n\
@@ -1459,6 +1540,42 @@ impl HadesApp {
         let context_usage = Some(self.context_usage_display());
 
         let help_entries = self.command_registry.help_entries();
+        let mcp_summaries: Vec<hades_mcp::McpServerSummary> = self
+            .config
+            .mcp
+            .servers
+            .iter()
+            .map(|(name, cfg)| {
+                let transport_str = match cfg.transport {
+                    hades_config::McpTransportType::Stdio => "stdio".to_string(),
+                    hades_config::McpTransportType::Http => "http".to_string(),
+                };
+                let tool_count = self
+                    .tool_registry
+                    .list()
+                    .into_iter()
+                    .filter(|t| t.name.starts_with(&format!("{name}.")))
+                    .count();
+                hades_mcp::McpServerSummary {
+                    name: name.clone(),
+                    state: if cfg.enabled {
+                        if tool_count > 0 {
+                            hades_mcp::McpServerState::Ready
+                        } else {
+                            hades_mcp::McpServerState::Configured
+                        }
+                    } else {
+                        hades_mcp::McpServerState::Stopped
+                    },
+                    transport: transport_str,
+                    tool_count,
+                    resource_count: 0,
+                    prompt_count: 0,
+                    error: None,
+                }
+            })
+            .collect();
+
         let mut context = CommandContext::new(
             self.state,
             &self.config,
@@ -1475,7 +1592,8 @@ impl HadesApp {
             Some(&self.workspace_info),
             Some(&self.tool_registry),
             Vec::new(),
-        );
+        )
+        .with_mcp_summaries(mcp_summaries);
 
         let result = self.command_registry.execute(input, &mut context);
 

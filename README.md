@@ -77,6 +77,7 @@ graph TD
     TUI --> CORE[hades-core<br/><i>State Machine & Coordinator</i>]
     CORE --> PROVIDER[hades-provider<br/><i>AI Adapters & Streaming</i>]
     CORE --> TOOLS[hades-tools<br/><i>29 Sandboxed Agent Tools</i>]
+    CORE --> MCP[hades-mcp<br/><i>Model Context Protocol Client & Server</i>]
     CORE --> STORAGE[hades-storage<br/><i>Session Repository & Persistence</i>]
     CORE --> CONFIG[hades-config<br/><i>TOML Configuration Engine</i>]
     CORE --> EVENTS[hades-events<br/><i>Async Pub/Sub Bus</i>]
@@ -86,12 +87,13 @@ graph TD
 
 | Crate | Purpose |
 | :--- | :--- |
-| `hades-cli` | Main binary entry point, argument parsing via `clap`, non-blocking tracing setup. |
-| `hades-tui` | Terminal user interface built with `ratatui` and `crossterm`. 5-region layout, clipboard, input handling. |
-| `hades-core` | Core application orchestrator, state machine (`AppState`), command registry, system prompt context. |
+| `hades-cli` | Main binary entry point, argument parsing via `clap`, MCP server mode (`hades mcp-server`), file tracing. |
+| `hades-tui` | Terminal user interface built with `ratatui` and `crossterm`. 5-region layout, clipboard, themes. |
+| `hades-core` | Core application orchestrator, state machine (`AppState`), command registry, system prompts. |
 | `hades-provider` | Pluggable provider abstraction (`Provider`), model managers, credential vault, SSE streaming. |
 | `hades-tools` | 29 built-in sandboxed tools, permission engine, secret redactor, path security. |
-| `hades-storage` | JSON session storage, conversation recovery, relative timestamp formatting. |
+| `hades-mcp` | Model Context Protocol (MCP) client, multi-server manager, STDIO & HTTP transports, Hades MCP server mode. |
+| `hades-storage` | JSON/file session storage, conversation recovery, relative timestamp formatting. |
 | `hades-config` | Schema-validated TOML configuration management at `~/.hades/config.toml`. |
 | `hades-events` | Asynchronous Pub/Sub event bus for telemetry, lifecycle notifications, and audit logs. |
 
@@ -435,7 +437,8 @@ Type `/` in the prompt input field to activate the interactive command palette:
 | :--- | :--- | :--- |
 | `/help` | None | Display modal listing all available keyboard shortcuts and slash commands. |
 | `/model` | None | Open interactive model picker to switch AI providers and target models. |
-| `/tools` | None | View registry of 29 built-in agent tools, schema definitions, and parameters. |
+| `/tools` | None | View registry of 29 built-in agent tools and external MCP tools. |
+| `/mcp` | None | Inspect configured Model Context Protocol (MCP) servers, tools, and diagnostics. |
 | `/permissions` | None | Display security rules, permission scopes, and risk levels for active session. |
 | `/workspace` | None | Inspect current workspace root directory path and detected project metadata. |
 | `/sessions` | None | Open session manager to view, rename, switch, or delete saved conversations. |
@@ -446,6 +449,21 @@ Type `/` in the prompt input field to activate the interactive command palette:
 
 ---
 
+## Model Context Protocol (MCP) Integration
+
+Hades supports the official **Model Context Protocol (MCP)** specification (`protocolVersion: 2024-11-05`), enabling seamless interoperability with external tool ecosystems and services:
+
+- **STDIO & Streamable HTTP Transports**: Connect to local CLI tools (`npx`, `uvx`, `python`, `docker`) or remote MCP HTTP endpoints.
+- **Dynamic Tool Namespacing**: Discovered MCP tools are cleanly namespaced (`<server>.<tool_name>`, e.g. `github.create_issue`, `postgres.query_schema`) and dynamically registered into the central tool registry.
+- **Unified Permission & Risk Classification**: External MCP tools undergo automated safety risk assessment (`Safe`, `Low`, `Medium`, `High`, `Critical`) and trigger interactive approval modals for mutating actions.
+- **Resources & Prompts**: Discover and read remote MCP resources and prompt templates.
+- **Hades MCP Server Mode**: Expose Hades workspace inspection and diagnostic tools to external clients (Cursor, Claude Desktop, autonomous agents):
+  ```bash
+  hades mcp-server --workspace /path/to/project
+  ```
+
+---
+
 ## Configuration Reference (`config.toml`)
 
 Hades loads configuration settings from `~/.hades/config.toml`. If the file does not exist, Hades automatically generates a default configuration on first launch.
@@ -453,29 +471,37 @@ Hades loads configuration settings from `~/.hades/config.toml`. If the file does
 ```toml
 # General System Configuration
 [general]
+app_name = "hades"
 default_mode = "simple"
-workspace_root = "."
-log_level = "info"
+
+[ui]
+theme = "dark"
+show_status_bar = true
 
 # Default Model & Provider Configuration
 [model]
-provider = "groq"
+provider_id = "groq"
 model_id = "llama-3.3-70b-versatile"
-temperature = 0.7
-max_tokens = 4096
 
-# Security & Sandboxing Policies
-[security]
-require_approval_for_mutating = true
-redact_secrets = true
-max_execution_timeout_secs = 30
-allowed_workspace_paths = ["."]
+# Model Context Protocol (MCP) Configuration
+[mcp]
+enabled = true
 
-# Terminal User Interface Settings
-[ui]
-theme = "fiery_dark"
-auto_scroll = true
-show_status_bar = true
+[mcp.servers.github]
+transport = "stdio"
+command = "npx"
+args = ["-y", "@modelcontextprotocol/server-github"]
+token_env = "GITHUB_TOKEN"
+timeout_secs = 30
+enabled = true
+auto_start = true
+
+[mcp.servers.postgres]
+transport = "stdio"
+command = "npx"
+args = ["-y", "@modelcontextprotocol/server-postgres", "postgresql://localhost/mydb"]
+enabled = false
+auto_start = false
 ```
 
 ---
@@ -541,7 +567,7 @@ cargo fmt --all -- --check
 # 2. Workspace compilation check
 cargo check --workspace --all-targets
 
-# 3. Execute unit and integration test suite
+# 3. Run all unit and integration tests
 cargo test --workspace
 
 # 4. Strict Clippy lint check
@@ -557,7 +583,7 @@ cargo clippy --workspace --all-targets --all-features -- -D warnings
 - [x] **Phase 2**: Multi-session persistence, context compaction, time semantics.
 - [x] **Phase 3**: 29 sandboxed tools, permission engine, process/network diagnostics.
 - [x] **Phase 3.1**: 5-region input layout, clean text clipboard support, fiery TUI theme.
-- [ ] **Phase 4**: Model Context Protocol (MCP) server & client integration.
+- [x] **Phase 4**: Model Context Protocol (MCP) Client & Server Integration, unified execution, `/mcp` commands.
 - [ ] **Phase 5**: Multi-agent orchestration and collaborative subagents.
 - [ ] **Phase 6**: Built-in headless browser automation sidecar.
 

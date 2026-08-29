@@ -26,6 +26,20 @@ async fn main() {
 
     info!("Starting Hades CLI");
 
+    // Check if MCP server mode was requested
+    if let Some(cli::Commands::McpServer { workspace }) = args.command {
+        let work_dir = workspace.unwrap_or_else(|| {
+            std::env::current_dir().unwrap_or_else(|_| std::path::PathBuf::from("."))
+        });
+        let server = hades_mcp::HadesMcpServer::new(work_dir);
+        if let Err(e) = server.run_stdio().await {
+            error!(error = %e, "Hades MCP server terminated with error");
+            eprintln!("MCP Server error: {}", e);
+            std::process::exit(1);
+        }
+        return;
+    }
+
     // 2. Initialize configuration service
     let config_service = match args.config {
         Some(path) => ConfigService::with_path(path),

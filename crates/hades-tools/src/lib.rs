@@ -14,6 +14,10 @@ pub mod workspace_tools;
 pub use context::ToolContext;
 pub use definition::{DynTool, RiskLevel, Tool, ToolCall, ToolDefinition, ToolResult, ToolStatus};
 pub use error::ToolError;
+pub use filesystem::{
+    FileSystemCreateTool, FileSystemDeleteTool, FileSystemEditTool, FileSystemListTool,
+    FileSystemMkdirTool, FileSystemReadTool, FileSystemWriteTool,
+};
 pub use registry::ToolRegistry;
 pub use security::{
     ApprovalDecision, EvaluationResult, PathSecurity, PermissionEngine, SecretRedactor,
@@ -26,6 +30,7 @@ pub use system::{
     SystemRuntimeVersionTool, SystemRuntimeWhichTool, SystemUptimeTool,
 };
 pub use workspace::{ProjectType, WorkspaceDetector, WorkspaceMetadata};
+pub use workspace_tools::{WorkspaceDetectTool, WorkspaceInspectTool};
 
 #[cfg(test)]
 mod tests {

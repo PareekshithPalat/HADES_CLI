@@ -3,7 +3,10 @@ pub mod model;
 pub mod service;
 
 pub use error::ConfigError;
-pub use model::{ActiveModelConfig, GeneralConfig, HadesConfig, UiConfig, CURRENT_CONFIG_VERSION};
+pub use model::{
+    ActiveModelConfig, GeneralConfig, HadesConfig, McpConfig, McpServerConfig, McpTransportType,
+    UiConfig, CURRENT_CONFIG_VERSION,
+};
 pub use service::ConfigService;
 
 #[cfg(test)]

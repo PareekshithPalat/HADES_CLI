@@ -67,10 +67,11 @@ Hades is organized as a modular Cargo workspace consisting of 8 focused crates:
 Hades-Cli/
 ├── assets/                  # Graphics, banners, and documentation assets
 ├── crates/
-│   ├── hades-cli/           # Main executable, CLI argument parsing (clap), logging
+│   ├── hades-cli/           # Main executable, CLI argument parsing (clap), MCP server mode
 │   ├── hades-config/        # Configuration management (TOML), schema validation
 │   ├── hades-core/          # Core coordinator, state machine, context & command registry
 │   ├── hades-events/        # Internal async Pub/Sub event bus
+│   ├── hades-mcp/           # Model Context Protocol (MCP) client, manager, and server
 │   ├── hades-provider/      # Multi-provider adapters, LLM capability engine, streaming
 │   ├── hades-storage/       # Session repository, conversation persistence, time formatting
 │   ├── hades-tools/         # 29 built-in sandboxed tools, permission & security engine

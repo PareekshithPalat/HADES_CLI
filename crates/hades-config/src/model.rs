@@ -1,4 +1,5 @@
 use serde::{Deserialize, Serialize};
+use std::collections::BTreeMap;
 
 use crate::error::ConfigError;
 
@@ -22,6 +23,10 @@ pub struct HadesConfig {
     /// Configured active model and provider settings, if configured.
     #[serde(default)]
     pub model: Option<ActiveModelConfig>,
+
+    /// Model Context Protocol (MCP) settings and server definitions.
+    #[serde(default)]
+    pub mcp: McpConfig,
 }
 
 fn default_version() -> String {
@@ -35,6 +40,7 @@ impl Default for HadesConfig {
             general: GeneralConfig::default(),
             ui: UiConfig::default(),
             model: None,
+            mcp: McpConfig::default(),
         }
     }
 }
@@ -54,6 +60,8 @@ impl HadesConfig {
         if let Some(ref m) = self.model {
             m.validate()?;
         }
+
+        self.mcp.validate()?;
 
         Ok(())
     }
@@ -185,6 +193,153 @@ impl ActiveModelConfig {
             return Err(ConfigError::Validation(
                 "Model ID cannot be empty".to_string(),
             ));
+        }
+        Ok(())
+    }
+}
+
+/// Top-level Model Context Protocol (MCP) configuration.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct McpConfig {
+    /// Whether the MCP subsystem is globally enabled.
+    #[serde(default = "default_mcp_enabled")]
+    pub enabled: bool,
+
+    /// Map of configured MCP servers.
+    #[serde(default)]
+    pub servers: BTreeMap<String, McpServerConfig>,
+}
+
+fn default_mcp_enabled() -> bool {
+    true
+}
+
+impl Default for McpConfig {
+    fn default() -> Self {
+        Self {
+            enabled: true,
+            servers: BTreeMap::new(),
+        }
+    }
+}
+
+impl McpConfig {
+    pub fn validate(&self) -> Result<(), ConfigError> {
+        for (name, server) in &self.servers {
+            if name.trim().is_empty() {
+                return Err(ConfigError::Validation(
+                    "MCP server name cannot be empty".to_string(),
+                ));
+            }
+            server.validate(name)?;
+        }
+        Ok(())
+    }
+}
+
+/// Transport mechanism for an MCP server connection.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[serde(rename_all = "lowercase")]
+pub enum McpTransportType {
+    #[default]
+    Stdio,
+    Http,
+}
+
+fn default_server_enabled() -> bool {
+    true
+}
+
+fn default_server_auto_start() -> bool {
+    true
+}
+
+fn default_mcp_timeout() -> u64 {
+    30
+}
+
+/// Configuration for an individual MCP server.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct McpServerConfig {
+    /// Transport mechanism (stdio or http).
+    #[serde(default)]
+    pub transport: McpTransportType,
+
+    /// Executable command for STDIO transport (e.g. "npx", "uvx", "docker", "python").
+    #[serde(default)]
+    pub command: Option<String>,
+
+    /// Command-line arguments for STDIO transport.
+    #[serde(default)]
+    pub args: Vec<String>,
+
+    /// Optional working directory for the spawned process.
+    #[serde(default)]
+    pub working_dir: Option<String>,
+
+    /// Environment variables to inject into the process.
+    #[serde(default)]
+    pub env: BTreeMap<String, String>,
+
+    /// Environment variable name referencing an API token/secret (prevents hardcoding tokens in config).
+    #[serde(default)]
+    pub token_env: Option<String>,
+
+    /// HTTP endpoint URL (for HTTP transport).
+    #[serde(default)]
+    pub url: Option<String>,
+
+    /// Whether this MCP server is enabled.
+    #[serde(default = "default_server_enabled")]
+    pub enabled: bool,
+
+    /// Whether to automatically connect on Hades startup.
+    #[serde(default = "default_server_auto_start")]
+    pub auto_start: bool,
+
+    /// Execution and request timeout in seconds.
+    #[serde(default = "default_mcp_timeout")]
+    pub timeout_secs: u64,
+}
+
+impl Default for McpServerConfig {
+    fn default() -> Self {
+        Self {
+            transport: McpTransportType::Stdio,
+            command: None,
+            args: Vec::new(),
+            working_dir: None,
+            env: BTreeMap::new(),
+            token_env: None,
+            url: None,
+            enabled: true,
+            auto_start: true,
+            timeout_secs: 30,
+        }
+    }
+}
+
+impl McpServerConfig {
+    pub fn validate(&self, server_name: &str) -> Result<(), ConfigError> {
+        match self.transport {
+            McpTransportType::Stdio => {
+                if let Some(ref cmd) = self.command {
+                    if cmd.trim().is_empty() {
+                        return Err(ConfigError::Validation(format!(
+                            "MCP server '{server_name}' command cannot be empty"
+                        )));
+                    }
+                }
+            }
+            McpTransportType::Http => {
+                if let Some(ref u) = self.url {
+                    if u.trim().is_empty() {
+                        return Err(ConfigError::Validation(format!(
+                            "MCP server '{server_name}' URL cannot be empty"
+                        )));
+                    }
+                }
+            }
         }
         Ok(())
     }

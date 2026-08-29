@@ -1,4 +1,4 @@
-use clap::Parser;
+use clap::{Parser, Subcommand};
 use std::path::PathBuf;
 
 /// Hades: Universal AI Agent CLI
@@ -26,4 +26,19 @@ pub struct CliArgs {
     /// Explicitly resume a previous conversation session by ID
     #[arg(short, long, value_name = "SESSION_ID")]
     pub session: Option<String>,
+
+    /// Optional subcommand
+    #[command(subcommand)]
+    pub command: Option<Commands>,
+}
+
+#[derive(Debug, Subcommand, Clone, PartialEq, Eq)]
+pub enum Commands {
+    /// Launch Hades in Model Context Protocol (MCP) server mode over STDIO
+    #[command(name = "mcp-server")]
+    McpServer {
+        /// Optional workspace directory path to serve (defaults to current working directory)
+        #[arg(short, long, value_name = "DIR")]
+        workspace: Option<PathBuf>,
+    },
 }

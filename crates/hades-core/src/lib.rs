@@ -258,6 +258,11 @@ mod tests {
             .execute_command("/history")
             .expect("execute alias /history");
         assert_eq!(output_history, CommandOutput::OpenSessionPicker);
+
+        let output_mcp = app.execute_command("/mcp").expect("execute /mcp");
+        assert!(
+            matches!(output_mcp, CommandOutput::Text(t) if t.contains("MODEL CONTEXT PROTOCOL"))
+        );
     }
 
     #[tokio::test]

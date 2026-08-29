@@ -863,3 +863,94 @@ async fn test_phase3_real_tool_call_flow_and_session_persistence() {
     // Verify file deleted on disk
     assert!(!sample_file.exists());
 }
+
+#[tokio::test]
+async fn test_mcp_configuration_and_command_suite() {
+    let dir = tempdir().expect("create temp dir");
+    let config_path = dir.path().join("config.toml");
+    let data_dir = dir.path().join("data");
+
+    let config_service = ConfigService::with_path(&config_path);
+    let mut config = hades_config::HadesConfig {
+        model: Some(ActiveModelConfig::new("openai", "gpt-4o")),
+        ..Default::default()
+    };
+
+    let mcp_cfg = hades_config::McpServerConfig {
+        command: Some("npx".to_string()),
+        args: vec![
+            "-y".to_string(),
+            "@modelcontextprotocol/server-github".to_string(),
+        ],
+        enabled: true,
+        auto_start: false,
+        ..Default::default()
+    };
+
+    config.mcp.servers.insert("github".to_string(), mcp_cfg);
+    config_service.save(&config).expect("save config");
+
+    let storage_service = StorageService::with_root(&data_dir);
+    let event_bus = EventBus::new();
+    let mut app = HadesApp::new(config_service, storage_service, event_bus);
+
+    app.init().expect("app init");
+    app.transition_to(AppState::Running)
+        .expect("transition to running");
+
+    // Execute /mcp command
+    let mcp_output = app.execute_command("/mcp").expect("execute /mcp");
+    match mcp_output {
+        CommandOutput::Text(text) => {
+            assert!(text.contains("MODEL CONTEXT PROTOCOL"));
+            assert!(text.contains("github"));
+            assert!(text.contains("stdio"));
+        }
+        _ => panic!("Expected text output from /mcp"),
+    }
+}
+
+#[tokio::test]
+async fn test_hades_mcp_server_cli_mode() {
+    let dir = tempdir().expect("create temp dir");
+    let test_file = dir.path().join("hello.txt");
+    std::fs::write(&test_file, "Hello from Hades MCP Server workspace!").expect("write test file");
+
+    let server = hades_mcp::HadesMcpServer::new(dir.path());
+
+    // 1. Test initialize
+    let init_req = hades_mcp::JsonRpcRequest::new("1", "initialize", None);
+    let init_resp = server.handle_request(init_req).await;
+    assert!(init_resp.error.is_none());
+    assert!(init_resp.result.is_some());
+
+    // 2. Test tools/list
+    let list_req = hades_mcp::JsonRpcRequest::new("2", "tools/list", None);
+    let list_resp = server.handle_request(list_req).await;
+    assert!(list_resp.error.is_none());
+    let list_val = list_resp.result.expect("tools list result");
+    let list_result: hades_mcp::ListToolsResult =
+        serde_json::from_value(list_val).expect("parse list result");
+    assert!(list_result
+        .tools
+        .iter()
+        .any(|t| t.name == "filesystem.read"));
+
+    // 3. Test tools/call (filesystem.read)
+    let call_req = hades_mcp::JsonRpcRequest::new(
+        "3",
+        "tools/call",
+        Some(serde_json::json!({
+            "name": "filesystem.read",
+            "arguments": { "path": "hello.txt" }
+        })),
+    );
+    let call_resp = server.handle_request(call_req).await;
+    assert!(call_resp.error.is_none());
+    let call_val = call_resp.result.expect("call result");
+    let call_result: hades_mcp::CallToolResult =
+        serde_json::from_value(call_val).expect("parse call result");
+    assert!(call_result
+        .combined_text()
+        .contains("Hello from Hades MCP Server workspace!"));
+}

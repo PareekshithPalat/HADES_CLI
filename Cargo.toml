@@ -9,6 +9,7 @@ members = [
     "crates/hades-storage",
     "crates/hades-provider",
     "crates/hades-tools",
+    "crates/hades-mcp",
 ]
 
 [workspace.package]
@@ -24,6 +25,7 @@ hades-events = { path = "crates/hades-events" }
 hades-storage = { path = "crates/hades-storage" }
 hades-provider = { path = "crates/hades-provider" }
 hades-tools = { path = "crates/hades-tools" }
+hades-mcp = { path = "crates/hades-mcp" }
 hades-core = { path = "crates/hades-core" }
 hades-tui = { path = "crates/hades-tui" }
 

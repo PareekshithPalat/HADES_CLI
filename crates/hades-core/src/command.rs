@@ -154,6 +154,7 @@ pub struct CommandContext<'a> {
     pub workspace_info: Option<&'a WorkspaceMetadata>,
     pub tool_registry: Option<&'a ToolRegistry>,
     pub session_permissions: Vec<String>,
+    pub mcp_summaries: Vec<hades_mcp::McpServerSummary>,
 }
 
 impl<'a> CommandContext<'a> {
@@ -189,6 +190,7 @@ impl<'a> CommandContext<'a> {
             workspace_info: None,
             tool_registry: None,
             session_permissions: Vec::new(),
+            mcp_summaries: Vec::new(),
         }
     }
 
@@ -202,6 +204,12 @@ impl<'a> CommandContext<'a> {
         self.workspace_info = workspace_info;
         self.tool_registry = tool_registry;
         self.session_permissions = session_permissions;
+        self
+    }
+
+    /// Attaches MCP server diagnostic summaries to the command context.
+    pub fn with_mcp_summaries(mut self, summaries: Vec<hades_mcp::McpServerSummary>) -> Self {
+        self.mcp_summaries = summaries;
         self
     }
 
@@ -576,6 +584,87 @@ impl Command for PermissionsCommand {
     }
 }
 
+/// Command: `/mcp`
+pub struct McpCommand;
+
+impl Command for McpCommand {
+    fn name(&self) -> &'static str {
+        "/mcp"
+    }
+
+    fn aliases(&self) -> &'static [&'static str] {
+        &["/mcps"]
+    }
+
+    fn description(&self) -> &'static str {
+        "Manage Model Context Protocol (MCP) servers and tools"
+    }
+
+    fn execute(&self, context: &mut CommandContext) -> Result<CommandOutput, CommandError> {
+        let mut output = String::from("MODEL CONTEXT PROTOCOL (MCP) SERVERS\n\n");
+
+        if context.mcp_summaries.is_empty() {
+            output.push_str("No MCP servers configured.\n\n");
+            output.push_str("To configure an MCP server, add it to your config.toml:\n");
+            output.push_str("  [mcp.servers.github]\n");
+            output.push_str("  transport = \"stdio\"\n");
+            output.push_str("  command = \"npx\"\n");
+            output.push_str("  args = [\"-y\", \"@modelcontextprotocol/server-github\"]\n");
+            output.push_str("  token_env = \"GITHUB_TOKEN\"\n");
+            return Ok(CommandOutput::Text(output));
+        }
+
+        output.push_str(&format!(
+            "  {:<16} {:<12} {:<10} {:<8} {:<10} {}\n",
+            "SERVER", "STATUS", "TRANSPORT", "TOOLS", "RESOURCES", "DIAGNOSTICS"
+        ));
+        output.push_str(&format!("  {}\n", "─".repeat(70)));
+
+        for s in &context.mcp_summaries {
+            let status_str = match &s.state {
+                hades_mcp::McpServerState::Ready => "READY",
+                hades_mcp::McpServerState::Connected => "CONNECTED",
+                hades_mcp::McpServerState::Starting => "STARTING",
+                hades_mcp::McpServerState::Configured => "CONFIGURED",
+                hades_mcp::McpServerState::Disconnected => "DISCONNECTED",
+                hades_mcp::McpServerState::Failed(_) => "FAILED",
+                hades_mcp::McpServerState::Stopping => "STOPPING",
+                hades_mcp::McpServerState::Stopped => "STOPPED",
+            };
+
+            let diag = s.error.as_deref().unwrap_or("ok");
+
+            output.push_str(&format!(
+                "  {:<16} {:<12} {:<10} {:<8} {:<10} {}\n",
+                s.name, status_str, s.transport, s.tool_count, s.resource_count, diag
+            ));
+        }
+
+        output.push_str("\nDiscovered MCP Tools:\n");
+        if let Some(reg) = context.tool_registry {
+            let mcp_tools: Vec<_> = reg
+                .list()
+                .into_iter()
+                .filter(|t| t.name.contains('.'))
+                .collect();
+            if mcp_tools.is_empty() {
+                output.push_str("  (No tools registered from active MCP servers)\n");
+            } else {
+                for t in mcp_tools {
+                    output.push_str(&format!(
+                        "  • {:<30} [{:<6}] {}\n",
+                        t.name,
+                        t.risk_level.to_string(),
+                        t.description
+                    ));
+                }
+            }
+        }
+
+        Ok(CommandOutput::Text(output))
+    }
+}
+
 /// Command: `/exit`
 pub struct ExitCommand;
 
@@ -614,7 +703,7 @@ impl CommandRegistry {
         }
     }
 
-    /// Creates a registry pre-populated with standard default commands (`/help`, `/status`, `/model`, `/switch`, `/new`, `/sessions`, `/tools`, `/workspace`, `/permissions`, `/exit`).
+    /// Creates a registry pre-populated with standard default commands (`/help`, `/status`, `/model`, `/switch`, `/new`, `/sessions`, `/tools`, `/workspace`, `/permissions`, `/mcp`, `/exit`).
     pub fn with_defaults() -> Self {
         let mut registry = Self::new();
         registry.register(HelpCommand);
@@ -626,6 +715,7 @@ impl CommandRegistry {
         registry.register(ToolsCommand);
         registry.register(WorkspaceCommand);
         registry.register(PermissionsCommand);
+        registry.register(McpCommand);
         registry.register(ExitCommand);
         registry
     }
