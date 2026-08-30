@@ -41,16 +41,15 @@ impl SoundPlayer {
         {
             let sound_file = match kind {
                 NotificationKind::InputRequired => "/System/Library/Sounds/Glass.aiff",
-                NotificationKind::TaskCompleted => "/System/Library/Sounds/Ping.aiff",
+                NotificationKind::TaskCompleted => "/System/Library/Sounds/Hero.aiff",
                 NotificationKind::Error => "/System/Library/Sounds/Basso.aiff",
             };
 
             let played = Command::new("afplay")
                 .arg(sound_file)
-                .stdout(std::process::Stdio::null())
-                .stderr(std::process::Stdio::null())
-                .spawn()
-                .is_ok();
+                .status()
+                .map(|s| s.success())
+                .unwrap_or(false);
 
             if !played {
                 Self::play_terminal_bell(kind);
@@ -71,17 +70,15 @@ impl SoundPlayer {
 
             let played = Command::new("paplay")
                 .arg(sound_file)
-                .stdout(std::process::Stdio::null())
-                .stderr(std::process::Stdio::null())
-                .spawn()
+                .status()
+                .map(|s| s.success())
                 .or_else(|_| {
                     Command::new("aplay")
                         .arg(sound_file)
-                        .stdout(std::process::Stdio::null())
-                        .stderr(std::process::Stdio::null())
-                        .spawn()
+                        .status()
+                        .map(|s| s.success())
                 })
-                .is_ok();
+                .unwrap_or(false);
 
             if !played {
                 Self::play_terminal_bell(kind);
@@ -96,13 +93,12 @@ impl SoundPlayer {
                 NotificationKind::Error => (330, 220),
             };
 
-            let cmd = format!("[Console]::Beep({}, 120); [Console]::Beep({}, 180)", freq1, freq2);
+            let cmd = format!("[Console]::Beep({}, 150); [Console]::Beep({}, 200)", freq1, freq2);
             let played = Command::new("powershell")
                 .args(["-NoProfile", "-Command", &cmd])
-                .stdout(std::process::Stdio::null())
-                .stderr(std::process::Stdio::null())
-                .spawn()
-                .is_ok();
+                .status()
+                .map(|s| s.success())
+                .unwrap_or(false);
 
             if !played {
                 Self::play_terminal_bell(kind);
@@ -202,8 +198,19 @@ impl NotificationService {
                     .appname("Hades CLI")
                     .show();
 
-                if let Err(e) = result {
-                    warn!(error = %e, "Desktop notification dispatch failed");
+                if result.is_err() {
+                    #[cfg(target_os = "macos")]
+                    {
+                        let script = format!(
+                            "display notification \"{}\" with title \"Hades CLI\" subtitle \"{}\"",
+                            message_owned.replace('"', "\\\""),
+                            title_owned.replace('"', "\\\"")
+                        );
+                        let _ = Command::new("osascript")
+                            .args(["-e", &script])
+                            .status();
+                        desktop_sent = true;
+                    }
                 } else {
                     desktop_sent = true;
                 }

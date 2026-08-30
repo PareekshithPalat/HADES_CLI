@@ -777,23 +777,27 @@ impl Command for NotifyCommand {
         ));
         output.push_str(&format!("Sound Theme:           {}\n\n", n.sound_theme));
 
-        if n.enabled && n.sound_enabled {
-            output.push_str("🔔 Played test notification chimes (Input Required & Task Completed).\n");
-            let sound_theme = n.sound_theme.clone();
+        if n.enabled {
+            output.push_str("🔔 Dispatched test audio sound chimes & desktop notification alert.\n");
+            let config_clone = n.clone();
             std::thread::spawn(move || {
-                crate::notification::SoundPlayer::play(
+                let service = crate::notification::NotificationService::new(config_clone, None);
+                service.notify(
                     crate::notification::NotificationKind::InputRequired,
-                    &sound_theme,
+                    "Input Required Alert",
+                    "Hades CLI is waiting for user action.",
                 );
-                std::thread::sleep(std::time::Duration::from_millis(400));
-                crate::notification::SoundPlayer::play(
+                std::thread::sleep(std::time::Duration::from_millis(500));
+                service.notify(
                     crate::notification::NotificationKind::TaskCompleted,
-                    &sound_theme,
+                    "Task Completed Alert",
+                    "Hades CLI task completed successfully.",
                 );
             });
         } else {
             output.push_str("ℹ️ Notifications/sounds are currently disabled in configuration.\n");
         }
+
 
         Ok(CommandOutput::Text(output))
     }
