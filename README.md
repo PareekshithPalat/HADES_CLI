@@ -1,6 +1,6 @@
 <div align="center">
 
-# <fontsize="10"><strong>HADES-CLI</strong></font>
+# <font size="10"><strong>HADES-CLI</strong></font>
 ### Universal AI Agent CLI Runtime
 
 [![Release](https://img.shields.io/badge/Release-Beta%20v0.1.1-FF5500?style=for-the-badge&logoColor=white)](https://github.com/PareekshithPalat/HADES_CLI)
