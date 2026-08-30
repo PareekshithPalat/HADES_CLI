@@ -446,7 +446,23 @@ pub enum HadesEvent {
         artifact_type: String,
         path: PathBuf,
     },
+
+    /// The application requires user input or approval.
+    InputRequired {
+        timestamp: DateTime<Utc>,
+        reason: String,
+        details: String,
+    },
+
+    /// A notification sound or desktop alert was triggered.
+    NotificationTriggered {
+        timestamp: DateTime<Utc>,
+        kind: String,
+        sound_played: bool,
+        desktop_sent: bool,
+    },
 }
+
 
 impl HadesEvent {
     /// Creates an `ApplicationStarted` event at the current time.
@@ -712,6 +728,9 @@ impl HadesEvent {
             Self::BrowserSnapshotCaptured { timestamp, .. } => *timestamp,
             Self::BrowserActionExecuted { timestamp, .. } => *timestamp,
             Self::BrowserArtifactGenerated { timestamp, .. } => *timestamp,
+            Self::InputRequired { timestamp, .. } => *timestamp,
+            Self::NotificationTriggered { timestamp, .. } => *timestamp,
         }
     }
 }
+

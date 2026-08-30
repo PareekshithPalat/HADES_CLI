@@ -2,18 +2,21 @@ pub mod app;
 pub mod command;
 pub mod context;
 pub mod error;
+pub mod notification;
 pub mod state;
 
 pub use app::{HadesApp, APP_VERSION};
 pub use command::{
     Command, CommandContext, CommandInfo, CommandOutput, CommandRegistry, ExitCommand,
     ExportCommand, HelpCommand, HelpEntry, ImportCommand, ModelCommand, NewSessionCommand,
-    SessionsCommand, StatusCommand, StatusInfo, SwitchCommand,
+    NotifyCommand, SessionsCommand, StatusCommand, StatusInfo, SwitchCommand,
 };
 
 pub use context::{ContextManager, ContextReport, TokenEstimator, UsageKind};
 pub use error::{CommandError, CoreError};
+pub use notification::{NotificationKind, NotificationService, SoundPlayer};
 pub use state::AppState;
+
 
 #[cfg(test)]
 mod tests {
@@ -129,11 +132,29 @@ mod tests {
                 assert!(names.contains(&"/switch".to_string()));
                 assert!(names.contains(&"/new".to_string()));
                 assert!(names.contains(&"/sessions".to_string()));
+                assert!(names.contains(&"/notify".to_string()));
                 assert!(names.contains(&"/exit".to_string()));
             }
             _ => panic!("Expected Help output"),
         }
     }
+
+    #[test]
+    fn test_notify_command_execution() {
+        let (mut app, _dir) = create_test_app();
+        app.init().expect("app init");
+
+        let output = app.execute_command("/notify").expect("execute /notify");
+        match output {
+            CommandOutput::Text(msg) => {
+                assert!(msg.contains("NOTIFICATION & SOUND CONFIGURATION"));
+                assert!(msg.contains("Master Notifications:"));
+                assert!(msg.contains("Audio Sounds:"));
+            }
+            _ => panic!("Expected Text output for /notify"),
+        }
+    }
+
 
     #[test]
     fn test_status_command_execution() {

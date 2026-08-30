@@ -579,7 +579,15 @@ fn render_status_bar(frame: &mut Frame, app: &HadesApp, state: &TuiState, area: 
                 .add_modifier(Modifier::BOLD),
         ),
         Span::styled(" · ", Style::default().fg(Color::DarkGray)),
-        if let Some(ref usage) = state.current_usage {
+        if app.state() == AppState::ToolApproval {
+            Span::styled(
+                "[🔔 INPUT REQUIRED]",
+                Style::default()
+                    .fg(Color::Black)
+                    .bg(HadesTheme::RATATUI_GOLD)
+                    .add_modifier(Modifier::BOLD),
+            )
+        } else if let Some(ref usage) = state.current_usage {
             Span::styled(
                 format!("{} tokens", usage.total_tokens.unwrap_or_default()),
                 Style::default().fg(Color::DarkGray),
@@ -596,6 +604,7 @@ fn render_status_bar(frame: &mut Frame, app: &HadesApp, state: &TuiState, area: 
     let paragraph = Paragraph::new(status_line);
     frame.render_widget(paragraph, area);
 }
+
 
 /// Helper computing a centered popup rectangle given percentage dimensions.
 fn centered_rect(percent_x: u16, percent_y: u16, r: Rect) -> Rect {
@@ -1402,7 +1411,7 @@ fn render_tool_approval(frame: &mut Frame, app: &HadesApp, state: &TuiState, are
 
     let block = Block::default()
         .title(Span::styled(
-            " ⚠️ Tool Execution Authorization ",
+            " 🔔 INPUT REQUIRED - Tool Execution Authorization ",
             Style::default()
                 .fg(HadesTheme::RATATUI_GOLD)
                 .add_modifier(Modifier::BOLD),
@@ -1410,6 +1419,7 @@ fn render_tool_approval(frame: &mut Frame, app: &HadesApp, state: &TuiState, are
         .borders(Borders::ALL)
         .border_type(BorderType::Rounded)
         .border_style(Style::default().fg(risk_color));
+
 
     let inner = block.inner(popup_area);
     frame.render_widget(block, popup_area);

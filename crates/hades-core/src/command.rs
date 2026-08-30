@@ -716,6 +716,89 @@ impl Command for McpCommand {
     }
 }
 
+/// Command: `/notify` (or `/sound`, `/notifications`)
+pub struct NotifyCommand;
+
+impl Command for NotifyCommand {
+    fn name(&self) -> &'static str {
+        "/notify"
+    }
+
+    fn aliases(&self) -> &'static [&'static str] {
+        &["/sound", "/notifications"]
+    }
+
+    fn description(&self) -> &'static str {
+        "Inspect and test sound and desktop notification configuration"
+    }
+
+    fn execute(&self, context: &mut CommandContext) -> Result<CommandOutput, CommandError> {
+        let n = &context.config.notification;
+        let mut output = String::from("NOTIFICATION & SOUND CONFIGURATION\n\n");
+        output.push_str(&format!(
+            "Master Notifications:  {}\n",
+            if n.enabled { "Enabled" } else { "Disabled" }
+        ));
+        output.push_str(&format!(
+            "Audio Sounds:          {}\n",
+            if n.sound_enabled {
+                "Enabled"
+            } else {
+                "Disabled"
+            }
+        ));
+        output.push_str(&format!(
+            "Desktop Popups:        {}\n",
+            if n.desktop_enabled {
+                "Enabled"
+            } else {
+                "Disabled"
+            }
+        ));
+        output.push_str(&format!(
+            "Notify Input Required: {}\n",
+            if n.notify_on_input_required {
+                "Yes"
+            } else {
+                "No"
+            }
+        ));
+        output.push_str(&format!(
+            "Notify Task Completed: {}\n",
+            if n.notify_on_task_completed {
+                "Yes"
+            } else {
+                "No"
+            }
+        ));
+        output.push_str(&format!(
+            "Notify On Error:       {}\n",
+            if n.notify_on_error { "Yes" } else { "No" }
+        ));
+        output.push_str(&format!("Sound Theme:           {}\n\n", n.sound_theme));
+
+        if n.enabled && n.sound_enabled {
+            output.push_str("🔔 Played test notification chimes (Input Required & Task Completed).\n");
+            let sound_theme = n.sound_theme.clone();
+            std::thread::spawn(move || {
+                crate::notification::SoundPlayer::play(
+                    crate::notification::NotificationKind::InputRequired,
+                    &sound_theme,
+                );
+                std::thread::sleep(std::time::Duration::from_millis(400));
+                crate::notification::SoundPlayer::play(
+                    crate::notification::NotificationKind::TaskCompleted,
+                    &sound_theme,
+                );
+            });
+        } else {
+            output.push_str("ℹ️ Notifications/sounds are currently disabled in configuration.\n");
+        }
+
+        Ok(CommandOutput::Text(output))
+    }
+}
+
 /// Command: `/exit`
 pub struct ExitCommand;
 
@@ -1050,7 +1133,7 @@ impl CommandRegistry {
         }
     }
 
-    /// Creates a registry pre-populated with standard default commands (`/help`, `/status`, `/model`, `/switch`, `/new`, `/sessions`, `/tools`, `/workspace`, `/permissions`, `/mcp`, `/agents`, `/browser`, `/export`, `/import`, `/exit`).
+    /// Creates a registry pre-populated with standard default commands (`/help`, `/status`, `/model`, `/switch`, `/new`, `/sessions`, `/tools`, `/workspace`, `/permissions`, `/mcp`, `/agents`, `/browser`, `/export`, `/import`, `/notify`, `/exit`).
     pub fn with_defaults() -> Self {
         let mut registry = Self::new();
         registry.register(HelpCommand);
@@ -1067,9 +1150,11 @@ impl CommandRegistry {
         registry.register(BrowserCommand);
         registry.register(ExportCommand);
         registry.register(ImportCommand);
+        registry.register(NotifyCommand);
         registry.register(ExitCommand);
         registry
     }
+
 
     /// Registers a new command into the registry.
     pub fn register<C: Command + 'static>(&mut self, command: C) {
