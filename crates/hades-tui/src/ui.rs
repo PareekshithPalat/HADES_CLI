@@ -1442,8 +1442,8 @@ fn render_tool_approval(frame: &mut Frame, app: &HadesApp, state: &TuiState, are
         ])
         .split(inner);
 
-    // 1. Header with Risk Badge
-    let header_line = Line::from(vec![
+    // 1. Header with Risk Badge and Requesting Agent Badge
+    let mut header_spans = vec![
         Span::styled("  Tool: ", Style::default().fg(Color::White)),
         Span::styled(
             call_name,
@@ -1459,8 +1459,25 @@ fn render_tool_approval(frame: &mut Frame, app: &HadesApp, state: &TuiState, are
                 .bg(risk_color)
                 .add_modifier(Modifier::BOLD),
         ),
-    ]);
-    frame.render_widget(Paragraph::new(header_line), chunks[0]);
+    ];
+
+    if let Some(req) = app.pending_approval() {
+        if let Some(ref role) = req.agent_role {
+            header_spans.push(Span::styled(
+                "   Agent: ",
+                Style::default().fg(Color::White),
+            ));
+            header_spans.push(Span::styled(
+                format!(" [{role}] "),
+                Style::default()
+                    .fg(Color::Black)
+                    .bg(HadesTheme::RATATUI_CYAN)
+                    .add_modifier(Modifier::BOLD),
+            ));
+        }
+    }
+
+    frame.render_widget(Paragraph::new(Line::from(header_spans)), chunks[0]);
 
     // 2. Summary
     let summary_para = Paragraph::new(Line::from(vec![

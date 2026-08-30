@@ -670,11 +670,34 @@ dependencies = [
 ]
 
 [[package]]
+name = "hades-agent"
+version = "0.1.0"
+dependencies = [
+ "async-trait",
+ "chrono",
+ "hades-config",
+ "hades-events",
+ "hades-mcp",
+ "hades-provider",
+ "hades-storage",
+ "hades-tools",
+ "serde",
+ "serde_json",
+ "tempfile",
+ "thiserror",
+ "tokio",
+ "tracing",
+ "uuid",
+]
+
+[[package]]
 name = "hades-cli"
 version = "0.1.0"
 dependencies = [
+ "async-trait",
  "clap",
  "dirs",
+ "hades-agent",
  "hades-config",
  "hades-core",
  "hades-events",
@@ -710,6 +733,7 @@ version = "0.1.0"
 dependencies = [
  "async-trait",
  "chrono",
+ "hades-agent",
  "hades-config",
  "hades-events",
  "hades-mcp",
@@ -815,6 +839,7 @@ dependencies = [
  "arboard",
  "crossterm",
  "futures",
+ "hades-agent",
  "hades-config",
  "hades-core",
  "hades-events",

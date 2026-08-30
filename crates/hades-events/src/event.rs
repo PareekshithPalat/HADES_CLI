@@ -300,6 +300,105 @@ pub enum HadesEvent {
         key: String,
         execution_id: String,
     },
+
+    /// Multi-agent orchestration was initiated.
+    OrchestrationStarted {
+        timestamp: DateTime<Utc>,
+        session_id: String,
+        orchestration_id: String,
+        strategy: String,
+        user_objective: String,
+        agent_count: usize,
+    },
+
+    /// Multi-agent task plan was constructed.
+    OrchestrationPlanned {
+        timestamp: DateTime<Utc>,
+        session_id: String,
+        orchestration_id: String,
+        tasks: Vec<String>,
+    },
+
+    /// A specialized subagent was spawned.
+    AgentSpawned {
+        timestamp: DateTime<Utc>,
+        orchestration_id: String,
+        agent_id: String,
+        role: String,
+        name: String,
+    },
+
+    /// A subagent emitted a live activity update.
+    AgentProgressUpdated {
+        timestamp: DateTime<Utc>,
+        orchestration_id: String,
+        agent_id: String,
+        role: String,
+        activity: String,
+    },
+
+    /// A subagent completed its execution.
+    AgentCompleted {
+        timestamp: DateTime<Utc>,
+        orchestration_id: String,
+        agent_id: String,
+        role: String,
+        status: String,
+    },
+
+    /// A subagent failed during execution.
+    AgentFailed {
+        timestamp: DateTime<Utc>,
+        orchestration_id: String,
+        agent_id: String,
+        role: String,
+        error: String,
+    },
+
+    /// An orchestrated subtask began execution.
+    TaskStarted {
+        timestamp: DateTime<Utc>,
+        orchestration_id: String,
+        task_id: String,
+        title: String,
+        assigned_agent: String,
+    },
+
+    /// An orchestrated subtask completed.
+    TaskCompleted {
+        timestamp: DateTime<Utc>,
+        orchestration_id: String,
+        task_id: String,
+        title: String,
+        status: String,
+    },
+
+    /// An orchestrated subtask failed.
+    TaskFailed {
+        timestamp: DateTime<Utc>,
+        orchestration_id: String,
+        task_id: String,
+        title: String,
+        error: String,
+    },
+
+    /// Multi-agent orchestration was cancelled.
+    OrchestrationCancelled {
+        timestamp: DateTime<Utc>,
+        session_id: String,
+        orchestration_id: String,
+        reason: String,
+    },
+
+    /// Multi-agent orchestration completed.
+    OrchestrationCompleted {
+        timestamp: DateTime<Utc>,
+        session_id: String,
+        orchestration_id: String,
+        status: String,
+        summary: String,
+        total_tokens: Option<u32>,
+    },
 }
 
 impl HadesEvent {
@@ -407,6 +506,104 @@ impl HadesEvent {
         }
     }
 
+    /// Creates an `OrchestrationStarted` event.
+    pub fn orchestration_started(
+        session_id: impl Into<String>,
+        orchestration_id: impl Into<String>,
+        strategy: impl Into<String>,
+        user_objective: impl Into<String>,
+        agent_count: usize,
+    ) -> Self {
+        Self::OrchestrationStarted {
+            timestamp: Utc::now(),
+            session_id: session_id.into(),
+            orchestration_id: orchestration_id.into(),
+            strategy: strategy.into(),
+            user_objective: user_objective.into(),
+            agent_count,
+        }
+    }
+
+    /// Creates a `TaskStarted` event.
+    pub fn task_started(
+        orchestration_id: impl Into<String>,
+        task_id: impl Into<String>,
+        title: impl Into<String>,
+        assigned_agent: impl Into<String>,
+    ) -> Self {
+        Self::TaskStarted {
+            timestamp: Utc::now(),
+            orchestration_id: orchestration_id.into(),
+            task_id: task_id.into(),
+            title: title.into(),
+            assigned_agent: assigned_agent.into(),
+        }
+    }
+
+    /// Creates a `TaskCompleted` event.
+    pub fn task_completed(
+        orchestration_id: impl Into<String>,
+        task_id: impl Into<String>,
+        title: impl Into<String>,
+        status: impl Into<String>,
+    ) -> Self {
+        Self::TaskCompleted {
+            timestamp: Utc::now(),
+            orchestration_id: orchestration_id.into(),
+            task_id: task_id.into(),
+            title: title.into(),
+            status: status.into(),
+        }
+    }
+
+    /// Creates a `TaskFailed` event.
+    pub fn task_failed(
+        orchestration_id: impl Into<String>,
+        task_id: impl Into<String>,
+        title: impl Into<String>,
+        error: impl Into<String>,
+    ) -> Self {
+        Self::TaskFailed {
+            timestamp: Utc::now(),
+            orchestration_id: orchestration_id.into(),
+            task_id: task_id.into(),
+            title: title.into(),
+            error: error.into(),
+        }
+    }
+
+    /// Creates an `OrchestrationCancelled` event.
+    pub fn orchestration_cancelled(
+        session_id: impl Into<String>,
+        orchestration_id: impl Into<String>,
+        reason: impl Into<String>,
+    ) -> Self {
+        Self::OrchestrationCancelled {
+            timestamp: Utc::now(),
+            session_id: session_id.into(),
+            orchestration_id: orchestration_id.into(),
+            reason: reason.into(),
+        }
+    }
+
+    /// Creates an `OrchestrationCompleted` event.
+    pub fn orchestration_completed(
+        session_id: impl Into<String>,
+        orchestration_id: impl Into<String>,
+        status: impl Into<String>,
+        summary: impl Into<String>,
+        total_tokens: Option<u32>,
+    ) -> Self {
+        Self::OrchestrationCompleted {
+            timestamp: Utc::now(),
+            session_id: session_id.into(),
+            orchestration_id: orchestration_id.into(),
+            status: status.into(),
+            summary: summary.into(),
+            total_tokens,
+        }
+    }
+
     /// Returns the timestamp of the event.
     pub fn timestamp(&self) -> DateTime<Utc> {
         match self {
@@ -451,6 +648,17 @@ impl HadesEvent {
             Self::ProcessStarted { timestamp, .. } => *timestamp,
             Self::ProcessExited { timestamp, .. } => *timestamp,
             Self::EnvironmentChanged { timestamp, .. } => *timestamp,
+            Self::OrchestrationStarted { timestamp, .. } => *timestamp,
+            Self::OrchestrationPlanned { timestamp, .. } => *timestamp,
+            Self::AgentSpawned { timestamp, .. } => *timestamp,
+            Self::AgentProgressUpdated { timestamp, .. } => *timestamp,
+            Self::AgentCompleted { timestamp, .. } => *timestamp,
+            Self::AgentFailed { timestamp, .. } => *timestamp,
+            Self::TaskStarted { timestamp, .. } => *timestamp,
+            Self::TaskCompleted { timestamp, .. } => *timestamp,
+            Self::TaskFailed { timestamp, .. } => *timestamp,
+            Self::OrchestrationCancelled { timestamp, .. } => *timestamp,
+            Self::OrchestrationCompleted { timestamp, .. } => *timestamp,
         }
     }
 }

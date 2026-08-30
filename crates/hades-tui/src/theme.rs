@@ -22,6 +22,7 @@ impl HadesTheme {
     pub const RATATUI_GOLD: Color = Color::Rgb(255, 195, 0);
     pub const RATATUI_GREEN: Color = Color::Green;
     pub const RATATUI_DARK_GRAY: Color = Color::DarkGray;
+    pub const RATATUI_CYAN: Color = Color::Rgb(0, 200, 255);
 
     // Unicode & ASCII Branding
     pub const TRIDENT: &'static str = "🜲";

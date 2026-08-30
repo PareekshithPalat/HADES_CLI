@@ -155,6 +155,7 @@ pub struct CommandContext<'a> {
     pub tool_registry: Option<&'a ToolRegistry>,
     pub session_permissions: Vec<String>,
     pub mcp_summaries: Vec<hades_mcp::McpServerSummary>,
+    pub raw_input: String,
 }
 
 impl<'a> CommandContext<'a> {
@@ -191,7 +192,14 @@ impl<'a> CommandContext<'a> {
             tool_registry: None,
             session_permissions: Vec::new(),
             mcp_summaries: Vec::new(),
+            raw_input: String::new(),
         }
+    }
+
+    /// Sets the raw command input string.
+    pub fn with_raw_input(mut self, input: impl Into<String>) -> Self {
+        self.raw_input = input.into();
+        self
     }
 
     /// Attaches workspace, tools, and permission information to the command context.
@@ -687,6 +695,118 @@ impl Command for ExitCommand {
     }
 }
 
+/// Command: `/agents`
+pub struct AgentsCommand;
+
+impl Command for AgentsCommand {
+    fn name(&self) -> &'static str {
+        "/agents"
+    }
+
+    fn aliases(&self) -> &'static [&'static str] {
+        &["/agent", "/subagents", "/team"]
+    }
+
+    fn description(&self) -> &'static str {
+        "Inspect specialized collaborative subagents and orchestration status"
+    }
+
+    fn execute(&self, context: &mut CommandContext) -> Result<CommandOutput, CommandError> {
+        let trimmed = context.raw_input.trim();
+        let tokens: Vec<&str> = trimmed.split_whitespace().collect();
+
+        if tokens.len() > 1 && tokens[1].eq_ignore_ascii_case("plan") {
+            let objective = tokens[2..].join(" ");
+            if objective.is_empty() {
+                return Ok(CommandOutput::Text(
+                    "Usage: /agents plan <objective>\nExample: /agents plan Audit dependencies and implement security fix"
+                        .to_string(),
+                ));
+            }
+            let decision = hades_agent::DecisionEngine::evaluate(&objective, true);
+            let plan = hades_agent::DecisionEngine::build_plan(&objective, &decision);
+            let mut out = format!(
+                "MULTI-AGENT EXECUTION PLAN\n\nObjective: {}\nStrategy:  {}\nReason:    {}\n\nProposed Subtasks:\n",
+                objective,
+                decision.strategy,
+                decision.reason
+            );
+            if let Some(p) = plan {
+                for (i, t) in p.tasks.iter().enumerate() {
+                    let deps = if t.dependencies.is_empty() {
+                        "none".to_string()
+                    } else {
+                        t.dependencies.join(", ")
+                    };
+                    out.push_str(&format!(
+                        "  {}. [{}] {}\n     Role: {}\n     Dependencies: {}\n\n",
+                        i + 1,
+                        t.id,
+                        t.title,
+                        t.assigned_role.name(),
+                        deps
+                    ));
+                }
+            } else {
+                out.push_str(
+                    "  (Direct single-agent execution recommended - no subagents needed)\n",
+                );
+            }
+            return Ok(CommandOutput::Text(out));
+        }
+
+        let mut output = String::from("SPECIALIST SUBAGENTS & ORCHESTRATION ROLES\n\n");
+        output.push_str(&format!(
+            "  {:<20} {:<8} {:<10} {}\n",
+            "ROLE", "MUTATING", "TIMEOUT", "RESPONSIBILITY & SPECIALIZATION"
+        ));
+        output.push_str(&format!("  {}\n", "─".repeat(80)));
+
+        let roles = vec![
+            hades_agent::AgentRole::Planner,
+            hades_agent::AgentRole::Explorer,
+            hades_agent::AgentRole::Researcher,
+            hades_agent::AgentRole::Analyst,
+            hades_agent::AgentRole::Implementer,
+            hades_agent::AgentRole::Reviewer,
+            hades_agent::AgentRole::Tester,
+            hades_agent::AgentRole::Debugger,
+            hades_agent::AgentRole::SecurityReviewer,
+            hades_agent::AgentRole::FileInvestigator,
+            hades_agent::AgentRole::SystemInvestigator,
+            hades_agent::AgentRole::GeneralSpecialist,
+        ];
+
+        for r in roles {
+            output.push_str(&format!(
+                "  {:<20} {:<8} {:<10} {}\n",
+                r.name(),
+                if r.is_mutating_allowed() { "Yes" } else { "No" },
+                format!("{}s", r.default_timeout_secs()),
+                r.description()
+            ));
+        }
+
+        output.push_str("\nSupported Orchestration Strategies:\n");
+        output.push_str(
+            "  - Direct:           Single primary agent execution (zero subagent overhead)\n",
+        );
+        output.push_str("  - Sequential:       Linear dependent subtask execution\n");
+        output.push_str(
+            "  - Parallel:         Concurrent execution of independent tasks (max 4 concurrent)\n",
+        );
+        output.push_str(
+            "  - Plan & Execute:   Upfront planning -> Subtask execution -> Primary synthesis\n",
+        );
+        output.push_str("  - Review & Refine:  Implementation -> Independent peer audit -> Primary synthesis\n\n");
+        output.push_str("Commands:\n");
+        output.push_str("  /agents                   List available roles & strategies\n");
+        output.push_str("  /agents plan <objective>  Formulate and inspect a multi-agent plan\n");
+
+        Ok(CommandOutput::Text(output))
+    }
+}
+
 /// Extensible command registry storing and dispatching commands.
 #[derive(Default)]
 pub struct CommandRegistry {
@@ -703,7 +823,7 @@ impl CommandRegistry {
         }
     }
 
-    /// Creates a registry pre-populated with standard default commands (`/help`, `/status`, `/model`, `/switch`, `/new`, `/sessions`, `/tools`, `/workspace`, `/permissions`, `/mcp`, `/exit`).
+    /// Creates a registry pre-populated with standard default commands (`/help`, `/status`, `/model`, `/switch`, `/new`, `/sessions`, `/tools`, `/workspace`, `/permissions`, `/mcp`, `/agents`, `/exit`).
     pub fn with_defaults() -> Self {
         let mut registry = Self::new();
         registry.register(HelpCommand);
@@ -716,6 +836,7 @@ impl CommandRegistry {
         registry.register(WorkspaceCommand);
         registry.register(PermissionsCommand);
         registry.register(McpCommand);
+        registry.register(AgentsCommand);
         registry.register(ExitCommand);
         registry
     }

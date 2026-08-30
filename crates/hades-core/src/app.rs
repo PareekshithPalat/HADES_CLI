@@ -31,6 +31,8 @@ pub struct PendingApproval {
     pub risk: RiskLevel,
     pub summary: String,
     pub details: String,
+    pub agent_role: Option<String>,
+    pub agent_name: Option<String>,
 }
 
 /// Central core runtime managing application lifecycle, sessions, context, providers, and subsystems.
@@ -51,6 +53,7 @@ pub struct HadesApp {
     permission_engine: PermissionEngine,
     pending_approval: Option<PendingApproval>,
     mcp_manager: McpServerManager,
+    orchestrator: hades_agent::AgentOrchestrator,
     version: &'static str,
 }
 
@@ -86,6 +89,7 @@ impl HadesApp {
         let permission_engine = PermissionEngine::new();
         let mcp_manager =
             McpServerManager::new(&workspace_info.current_dir).with_event_bus(event_bus.clone());
+        let orchestrator = hades_agent::AgentOrchestrator::new().with_event_bus(event_bus.clone());
 
         Self {
             state: AppState::Startup,
@@ -104,6 +108,7 @@ impl HadesApp {
             permission_engine,
             pending_approval: None,
             mcp_manager,
+            orchestrator,
             version: APP_VERSION,
         }
     }
@@ -532,6 +537,8 @@ impl HadesApp {
                     risk,
                     summary: summary.clone(),
                     details: details.clone(),
+                    agent_role: None,
+                    agent_name: None,
                 });
                 self.transition_to(AppState::ToolApproval)?;
                 self.event_bus.publish(HadesEvent::ToolApprovalRequested {
@@ -1593,7 +1600,8 @@ impl HadesApp {
             Some(&self.tool_registry),
             Vec::new(),
         )
-        .with_mcp_summaries(mcp_summaries);
+        .with_mcp_summaries(mcp_summaries)
+        .with_raw_input(input);
 
         let result = self.command_registry.execute(input, &mut context);
 
@@ -1644,5 +1652,106 @@ impl HadesApp {
         self.transition_to(AppState::Exited)?;
         info!("Hades core runtime shutdown complete");
         Ok(())
+    }
+
+    /// Returns an immutable reference to the multi-agent orchestrator.
+    pub fn orchestrator(&self) -> &hades_agent::AgentOrchestrator {
+        &self.orchestrator
+    }
+
+    /// Returns a mutable reference to the multi-agent orchestrator.
+    pub fn orchestrator_mut(&mut self) -> &mut hades_agent::AgentOrchestrator {
+        &mut self.orchestrator
+    }
+
+    /// Delegates an objective to specialized collaborative subagents, executing the plan and synthesizing results.
+    pub async fn execute_orchestration(&mut self, objective: &str) -> Result<String, CoreError> {
+        let (provider_id, model_id) = match (
+            self.model_manager.active_provider_id(),
+            self.model_manager.active_model_id(),
+        ) {
+            (Some(p), Some(m)) => (p.to_string(), m.to_string()),
+            _ => {
+                return Err(CoreError::Runtime(
+                    "No active AI model configured. Use /model to configure one.".to_string(),
+                ))
+            }
+        };
+
+        let provider = self
+            .model_manager
+            .get_provider(&provider_id)
+            .ok_or_else(|| CoreError::Runtime(format!("Provider {provider_id} not found")))?;
+
+        let credential = self
+            .credential_backend
+            .get_credential(&provider_id)
+            .await?
+            .unwrap_or_else(|| Credential::with_api_key(&provider_id, ""));
+
+        let session_id = self
+            .active_session
+            .as_ref()
+            .map(|s| s.metadata.id.clone())
+            .unwrap_or_else(|| "default".to_string());
+
+        // 1. Record user message in session
+        let user_msg = Message::user(&session_id, objective);
+        if let Some(ref mut session) = self.active_session {
+            session.add_message(user_msg);
+            let _ = self.session_repository.save_session(session).await;
+        }
+
+        // 2. Formulate execution decision & plan
+        let decision = hades_agent::DecisionEngine::evaluate(objective, true);
+        let mut plan = hades_agent::DecisionEngine::build_plan(objective, &decision)
+            .unwrap_or_else(|| {
+                let t1 = hades_agent::Task::new(
+                    "task-1-explore",
+                    "Exploration & Analysis",
+                    format!("Explore relevant context for: {objective}"),
+                    hades_agent::AgentRole::Explorer,
+                );
+                let t2 = hades_agent::Task::new(
+                    "task-2-execute",
+                    "Task Execution",
+                    format!("Execute required actions for: {objective}"),
+                    hades_agent::AgentRole::Implementer,
+                )
+                .with_dependency("task-1-explore");
+                hades_agent::TaskPlan::new(
+                    objective,
+                    hades_agent::OrchestrationStrategy::PlanAndExecute,
+                    vec![t1, t2],
+                )
+            });
+
+        let mut shared_context =
+            hades_agent::SharedTaskContext::new(&session_id, objective, &self.workspace_info.root);
+
+        // 3. Run multi-agent orchestration
+        let synthesis = self
+            .orchestrator
+            .orchestrate(
+                &mut plan,
+                &mut shared_context,
+                provider,
+                &model_id,
+                &credential,
+                &self.tool_registry,
+                &mut self.permission_engine,
+            )
+            .await
+            .map_err(|e| CoreError::Runtime(format!("Multi-agent orchestration error: {e}")))?;
+
+        // 4. Record synthesized assistant response in session
+        let assistant_msg =
+            Message::assistant(&session_id, &synthesis, Some(provider_id), Some(model_id));
+        if let Some(ref mut session) = self.active_session {
+            session.add_message(assistant_msg);
+            let _ = self.session_repository.save_session(session).await;
+        }
+
+        Ok(synthesis)
     }
 }
