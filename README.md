@@ -16,7 +16,7 @@
 
 <br/>
 
-![HADES Hero Banner](assets/hades_hero_banner.jpg)
+![HADES Hero Banner](assets/hadesbanner.png)
 
 </div>
 
