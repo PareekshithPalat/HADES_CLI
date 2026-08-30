@@ -39,7 +39,7 @@ Equipped with a **29-tool autonomous agent runtime**, a strict **sandboxed permi
 
 ## Architecture & Features
 
-![HADES Features & Architecture](assets/hades_features_showcase.jpg)
+![HADES Features & Architecture](assets/hadesarchitecture.png)
 
 ---
 
