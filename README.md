@@ -1,6 +1,7 @@
 <div align="center">
 
-![HADES Hero Banner](assets/hadesbanner.png)
+# <font size="26"><strong>HADES-CLI</strong></font>
+### Universal AI Agent CLI Runtime
 
 [![Release](https://img.shields.io/badge/Release-Beta%20v0.1.1-FF5500?style=for-the-badge&logoColor=white)](https://github.com/PareekshithPalat/HADES_CLI)
 [![Rust](https://img.shields.io/badge/Rust-1.80%2B-orange?style=for-the-badge&logo=rust&logoColor=white)](https://www.rust-lang.org/)
@@ -15,8 +16,7 @@
 
 <br/>
 
-# <font size="7"><strong>HADES-CLI</strong></font>
-### Universal AI Agent CLI Runtime
+![HADES Hero Banner](assets/hadesbanner.png)
 
 </div>
 
