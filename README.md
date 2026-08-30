@@ -1,7 +1,14 @@
 <div align="center">
 
-<h1 align="center">HADES-CLI</h1>
+<div align="center">
+
+# HADES-CLI
+
 ### Universal AI Agent CLI Runtime
+
+**Any model. Any provider. Any project. Any machine. Any task. One user-controlled AI agent.**
+
+</div>
 
 [![Release](https://img.shields.io/badge/Release-Beta%20v0.1.1-FF5500?style=for-the-badge&logoColor=white)](https://github.com/PareekshithPalat/HADES_CLI)
 [![Rust](https://img.shields.io/badge/Rust-1.80%2B-orange?style=for-the-badge&logo=rust&logoColor=white)](https://www.rust-lang.org/)
