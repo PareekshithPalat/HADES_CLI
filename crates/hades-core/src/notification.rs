@@ -1,6 +1,6 @@
 use std::io::{stdout, Write};
 use std::process::Command;
-use tracing::{debug, warn};
+use tracing::debug;
 
 use hades_config::NotificationConfig;
 use hades_events::{EventBus, HadesEvent};
@@ -26,33 +26,44 @@ impl NotificationKind {
     }
 }
 
-/// Plays distinct non-blocking audio sound effects for CLI events.
+/// Plays distinct, attention-demanding non-blocking audio sound effects for CLI events.
 pub struct SoundPlayer;
 
 impl SoundPlayer {
-    /// Plays an audio chime matching the specified notification kind.
+    /// Plays an urgent audio chime and terminal bell matching the specified notification kind.
     pub fn play(kind: NotificationKind, sound_theme: &str) {
+        // Emit terminal bell characters immediately to trigger terminal visual/audio bell
+        Self::play_terminal_bell(kind);
+
         if sound_theme == "bell_only" {
-            Self::play_terminal_bell(kind);
             return;
         }
 
         #[cfg(target_os = "macos")]
         {
-            let sound_file = match kind {
-                NotificationKind::InputRequired => "/System/Library/Sounds/Glass.aiff",
-                NotificationKind::TaskCompleted => "/System/Library/Sounds/Hero.aiff",
-                NotificationKind::Error => "/System/Library/Sounds/Basso.aiff",
+            let (first_sound, second_sound) = match kind {
+                NotificationKind::InputRequired => (
+                    "/System/Library/Sounds/Sosumi.aiff",
+                    Some("/System/Library/Sounds/Glass.aiff"),
+                ),
+                NotificationKind::TaskCompleted => (
+                    "/System/Library/Sounds/Hero.aiff",
+                    Some("/System/Library/Sounds/Ping.aiff"),
+                ),
+                NotificationKind::Error => (
+                    "/System/Library/Sounds/Basso.aiff",
+                    Some("/System/Library/Sounds/Sosumi.aiff"),
+                ),
             };
 
-            let played = Command::new("afplay")
-                .arg(sound_file)
-                .status()
-                .map(|s| s.success())
-                .unwrap_or(false);
+            let _ = Command::new("afplay")
+                .arg(first_sound)
+                .status();
 
-            if !played {
-                Self::play_terminal_bell(kind);
+            if let Some(second) = second_sound {
+                let _ = Command::new("afplay")
+                    .arg(second)
+                    .status();
             }
         }
 
@@ -60,7 +71,7 @@ impl SoundPlayer {
         {
             let sound_file = match kind {
                 NotificationKind::InputRequired => {
-                    "/usr/share/sounds/freedesktop/stereo/message-new-instant.oga"
+                    "/usr/share/sounds/freedesktop/stereo/dialog-warning.oga"
                 }
                 NotificationKind::TaskCompleted => {
                     "/usr/share/sounds/freedesktop/stereo/complete.oga"
@@ -68,55 +79,42 @@ impl SoundPlayer {
                 NotificationKind::Error => "/usr/share/sounds/freedesktop/stereo/dialog-error.oga",
             };
 
-            let played = Command::new("paplay")
+            let _ = Command::new("paplay")
                 .arg(sound_file)
                 .status()
-                .map(|s| s.success())
                 .or_else(|_| {
                     Command::new("aplay")
                         .arg(sound_file)
                         .status()
-                        .map(|s| s.success())
-                })
-                .unwrap_or(false);
-
-            if !played {
-                Self::play_terminal_bell(kind);
-            }
+                });
         }
 
         #[cfg(target_os = "windows")]
         {
-            let (freq1, freq2) = match kind {
-                NotificationKind::InputRequired => (880, 1046),
-                NotificationKind::TaskCompleted => (523, 784),
-                NotificationKind::Error => (330, 220),
+            let cmd = match kind {
+                NotificationKind::InputRequired => {
+                    "[Console]::Beep(1200, 120); [Console]::Beep(1800, 150); [Console]::Beep(1200, 120); [Console]::Beep(1800, 200)"
+                }
+                NotificationKind::TaskCompleted => {
+                    "[Console]::Beep(523, 120); [Console]::Beep(659, 120); [Console]::Beep(784, 180)"
+                }
+                NotificationKind::Error => {
+                    "[Console]::Beep(400, 200); [Console]::Beep(300, 300)"
+                }
             };
 
-            let cmd = format!("[Console]::Beep({}, 150); [Console]::Beep({}, 200)", freq1, freq2);
-            let played = Command::new("powershell")
-                .args(["-NoProfile", "-Command", &cmd])
-                .status()
-                .map(|s| s.success())
-                .unwrap_or(false);
-
-            if !played {
-                Self::play_terminal_bell(kind);
-            }
-        }
-
-        #[cfg(not(any(target_os = "macos", target_os = "linux", target_os = "windows")))]
-        {
-            Self::play_terminal_bell(kind);
+            let _ = Command::new("powershell")
+                .args(["-NoProfile", "-Command", cmd])
+                .status();
         }
     }
 
     /// Emits ASCII terminal bell characters (`\x07`) to standard output.
     pub fn play_terminal_bell(kind: NotificationKind) {
         let count = match kind {
-            NotificationKind::InputRequired => 2,
-            NotificationKind::TaskCompleted => 1,
-            NotificationKind::Error => 3,
+            NotificationKind::InputRequired => 4,
+            NotificationKind::TaskCompleted => 2,
+            NotificationKind::Error => 4,
         };
 
         let mut out = stdout();
@@ -127,7 +125,7 @@ impl SoundPlayer {
     }
 }
 
-/// Central notification service coordinating audio play and desktop OS pop-up alerts.
+/// Central notification service coordinating in-terminal audio sound alerts.
 #[derive(Clone)]
 pub struct NotificationService {
     config: NotificationConfig,
@@ -168,55 +166,21 @@ impl NotificationService {
         }
 
         let sound_enabled = self.config.sound_enabled;
-        let desktop_enabled = self.config.desktop_enabled;
         let sound_theme = self.config.sound_theme.clone();
-        let title_owned = title.to_string();
-        let message_owned = message.to_string();
+        let _title_owned = title.to_string();
+        let _message_owned = message.to_string();
 
         debug!(
             kind = ?kind,
             sound = sound_enabled,
-            desktop = desktop_enabled,
-            "Triggering notification"
+            "Triggering in-terminal notification alert"
         );
 
-        // Spawn background task for non-blocking playback and desktop alert dispatch
+        // Spawn background thread for non-blocking sound playback
         std::thread::spawn(move || {
-            let mut sound_played = false;
-            let mut desktop_sent = false;
-
             if sound_enabled {
                 SoundPlayer::play(kind, &sound_theme);
-                sound_played = true;
             }
-
-            if desktop_enabled {
-                let summary = format!("Hades CLI - {}", title_owned);
-                let result = notify_rust::Notification::new()
-                    .summary(&summary)
-                    .body(&message_owned)
-                    .appname("Hades CLI")
-                    .show();
-
-                if result.is_err() {
-                    #[cfg(target_os = "macos")]
-                    {
-                        let script = format!(
-                            "display notification \"{}\" with title \"Hades CLI\" subtitle \"{}\"",
-                            message_owned.replace('"', "\\\""),
-                            title_owned.replace('"', "\\\"")
-                        );
-                        let _ = Command::new("osascript")
-                            .args(["-e", &script])
-                            .status();
-                        desktop_sent = true;
-                    }
-                } else {
-                    desktop_sent = true;
-                }
-            }
-
-            let _ = (sound_played, desktop_sent);
         });
 
         if let Some(ref bus) = self.event_bus {
@@ -224,7 +188,7 @@ impl NotificationService {
                 timestamp: chrono::Utc::now(),
                 kind: kind.as_str().to_string(),
                 sound_played: self.config.sound_enabled,
-                desktop_sent: self.config.desktop_enabled,
+                desktop_sent: false,
             });
         }
     }

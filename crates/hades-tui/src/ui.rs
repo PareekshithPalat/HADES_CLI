@@ -34,6 +34,28 @@ pub fn render(frame: &mut Frame, app: &HadesApp, state: &mut TuiState) {
     render_input_bottom_border(frame, bottom_border_area);
     render_status_bar(frame, app, state, status_area);
 
+    // In-terminal Attention Banner Pop-In when Input Required
+    if app.state() == AppState::ToolApproval {
+        let alert_text = " 🚨 ATTENTION: USER INPUT REQUIRED (PRESS 1-4 TO AUTHORIZE) ";
+        let alert_len = alert_text.chars().count() as u16;
+        let alert_width = alert_len.min(size.width.saturating_sub(4));
+        let alert_area = Rect {
+            x: size.width.saturating_sub(alert_width + 2),
+            y: 0,
+            width: alert_width,
+            height: 1,
+        };
+        frame.render_widget(Clear, alert_area);
+        let alert_line = Line::from(vec![Span::styled(
+            alert_text,
+            Style::default()
+                .fg(Color::White)
+                .bg(HadesTheme::RATATUI_FIRE)
+                .add_modifier(Modifier::BOLD),
+        )]);
+        frame.render_widget(Paragraph::new(alert_line), alert_area);
+    }
+
     // Floating Ephemeral Toast Notification (e.g. "✓ Copied assistant response to clipboard")
     if let Some(toast) = state.toast_text() {
         let toast_len = (toast.chars().count() + 6) as u16;
@@ -58,6 +80,7 @@ pub fn render(frame: &mut Frame, app: &HadesApp, state: &mut TuiState) {
         let para = Paragraph::new(toast_line).style(Style::default().bg(Color::Rgb(35, 35, 35)));
         frame.render_widget(para, toast_area);
     }
+
 
     // Modal Overlays (Minimal, clean floating dialogs)
     match app.state() {
@@ -1411,14 +1434,16 @@ fn render_tool_approval(frame: &mut Frame, app: &HadesApp, state: &TuiState, are
 
     let block = Block::default()
         .title(Span::styled(
-            " 🔔 INPUT REQUIRED - Tool Execution Authorization ",
+            " 🚨 ATTENTION REQUIRED: USER AUTHORIZATION NEEDED 🚨 ",
             Style::default()
-                .fg(HadesTheme::RATATUI_GOLD)
+                .fg(Color::White)
+                .bg(HadesTheme::RATATUI_FIRE)
                 .add_modifier(Modifier::BOLD),
         ))
         .borders(Borders::ALL)
-        .border_type(BorderType::Rounded)
-        .border_style(Style::default().fg(risk_color));
+        .border_type(BorderType::Double)
+        .border_style(Style::default().fg(HadesTheme::RATATUI_FIRE));
+
 
 
     let inner = block.inner(popup_area);
