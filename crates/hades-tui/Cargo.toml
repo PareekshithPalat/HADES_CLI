@@ -14,6 +14,7 @@ hades-storage.workspace = true
 hades-provider.workspace = true
 hades-tools.workspace = true
 hades-agent.workspace = true
+hades-browser.workspace = true
 ratatui.workspace = true
 crossterm.workspace = true
 tokio.workspace = true

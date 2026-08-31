@@ -27,6 +27,10 @@ pub struct HadesConfig {
     /// Model Context Protocol (MCP) settings and server definitions.
     #[serde(default)]
     pub mcp: McpConfig,
+
+    /// Browser automation and web retrieval settings.
+    #[serde(default)]
+    pub browser: BrowserConfig,
 }
 
 fn default_version() -> String {
@@ -41,6 +45,7 @@ impl Default for HadesConfig {
             ui: UiConfig::default(),
             model: None,
             mcp: McpConfig::default(),
+            browser: BrowserConfig::default(),
         }
     }
 }
@@ -62,6 +67,7 @@ impl HadesConfig {
         }
 
         self.mcp.validate()?;
+        self.browser.validate()?;
 
         Ok(())
     }
@@ -340,6 +346,111 @@ impl McpServerConfig {
                     }
                 }
             }
+        }
+        Ok(())
+    }
+}
+
+/// Browser automation and web retrieval configuration.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct BrowserConfig {
+    /// Whether browser automation and web features are enabled.
+    #[serde(default = "default_true")]
+    pub enabled: bool,
+
+    /// Operating mode: "isolated" (default), "persistent", or "attach".
+    #[serde(default = "default_browser_mode")]
+    pub mode: String,
+
+    /// Preferred browser binary: "auto" (default), "chrome", "chromium", "edge", "brave".
+    #[serde(default = "default_preferred_browser")]
+    pub preferred_browser: String,
+
+    /// Explicit path to a browser executable binary.
+    #[serde(default)]
+    pub binary_path: Option<String>,
+
+    /// Default execution timeout in seconds.
+    #[serde(default = "default_browser_timeout")]
+    pub default_timeout_seconds: u64,
+
+    /// Maximum interactive browser actions allowed per task to prevent loops.
+    #[serde(default = "default_max_browser_actions")]
+    pub max_actions_per_task: usize,
+
+    /// Maximum concurrent open browser tabs.
+    #[serde(default = "default_max_browser_tabs")]
+    pub max_tabs: usize,
+
+    /// Profile mode: "ephemeral" or "persistent".
+    #[serde(default = "default_profile_mode")]
+    pub profile_mode: String,
+
+    /// Whether to run browser in headless mode.
+    #[serde(default = "default_true")]
+    pub headless: bool,
+}
+
+fn default_true() -> bool {
+    true
+}
+
+fn default_browser_mode() -> String {
+    "isolated".to_string()
+}
+
+fn default_preferred_browser() -> String {
+    "auto".to_string()
+}
+
+fn default_browser_timeout() -> u64 {
+    30
+}
+
+fn default_max_browser_actions() -> usize {
+    100
+}
+
+fn default_max_browser_tabs() -> usize {
+    10
+}
+
+fn default_profile_mode() -> String {
+    "ephemeral".to_string()
+}
+
+impl Default for BrowserConfig {
+    fn default() -> Self {
+        Self {
+            enabled: true,
+            mode: default_browser_mode(),
+            preferred_browser: default_preferred_browser(),
+            binary_path: None,
+            default_timeout_seconds: default_browser_timeout(),
+            max_actions_per_task: default_max_browser_actions(),
+            max_tabs: default_max_browser_tabs(),
+            profile_mode: default_profile_mode(),
+            headless: true,
+        }
+    }
+}
+
+impl BrowserConfig {
+    pub fn validate(&self) -> Result<(), ConfigError> {
+        if self.default_timeout_seconds == 0 {
+            return Err(ConfigError::Validation(
+                "Browser default_timeout_seconds must be greater than 0".to_string(),
+            ));
+        }
+        if self.max_actions_per_task == 0 {
+            return Err(ConfigError::Validation(
+                "Browser max_actions_per_task must be greater than 0".to_string(),
+            ));
+        }
+        if self.max_tabs == 0 {
+            return Err(ConfigError::Validation(
+                "Browser max_tabs must be greater than 0".to_string(),
+            ));
         }
         Ok(())
     }

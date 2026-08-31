@@ -155,6 +155,8 @@ pub struct CommandContext<'a> {
     pub tool_registry: Option<&'a ToolRegistry>,
     pub session_permissions: Vec<String>,
     pub mcp_summaries: Vec<hades_mcp::McpServerSummary>,
+    pub browser_status: Option<hades_browser::BrowserStatus>,
+    pub browser_manager: Option<Arc<hades_browser::BrowserManager>>,
     pub raw_input: String,
 }
 
@@ -192,6 +194,8 @@ impl<'a> CommandContext<'a> {
             tool_registry: None,
             session_permissions: Vec::new(),
             mcp_summaries: Vec::new(),
+            browser_status: None,
+            browser_manager: None,
             raw_input: String::new(),
         }
     }
@@ -218,6 +222,17 @@ impl<'a> CommandContext<'a> {
     /// Attaches MCP server diagnostic summaries to the command context.
     pub fn with_mcp_summaries(mut self, summaries: Vec<hades_mcp::McpServerSummary>) -> Self {
         self.mcp_summaries = summaries;
+        self
+    }
+
+    /// Attaches browser status and manager to the command context.
+    pub fn with_browser(
+        mut self,
+        status: Option<hades_browser::BrowserStatus>,
+        manager: Option<Arc<hades_browser::BrowserManager>>,
+    ) -> Self {
+        self.browser_status = status;
+        self.browser_manager = manager;
         self
     }
 
@@ -807,6 +822,70 @@ impl Command for AgentsCommand {
     }
 }
 
+/// Command to inspect and manage headless browser sidecar and web retrieval.
+pub struct BrowserCommand;
+
+impl Command for BrowserCommand {
+    fn name(&self) -> &'static str {
+        "/browser"
+    }
+
+    fn aliases(&self) -> &'static [&'static str] {
+        &["/web"]
+    }
+
+    fn description(&self) -> &'static str {
+        "Inspect browser automation state, active tabs, and web capabilities (/browser, /web)"
+    }
+
+    fn execute(&self, context: &mut CommandContext) -> Result<CommandOutput, CommandError> {
+        let mut out = String::from("HADES WEB INTELLIGENCE & BROWSER SIDECAR\n\n");
+        if let Some(ref status) = context.browser_status {
+            out.push_str(&format!("  Browser Engine:     {}\n", status.browser_name));
+            out.push_str(&format!("  Version:            {}\n", status.version));
+            out.push_str(&format!(
+                "  Status:             {}\n",
+                if status.is_running {
+                    "Running (Active Sidecar)"
+                } else {
+                    "Idle / Standby"
+                }
+            ));
+            out.push_str(&format!("  Mode:               {}\n", status.mode));
+            out.push_str(&format!("  Active Tabs:        {}\n", status.active_tabs));
+            if let Some(port) = status.cdp_port {
+                out.push_str(&format!("  CDP Port:           {}\n", port));
+            }
+            if let Some(ref path) = status.binary_path {
+                out.push_str(&format!("  Binary Location:    {}\n", path.display()));
+            }
+        } else {
+            out.push_str("  Status:             Idle (Starts automatically on first web/browser tool call)\n");
+        }
+
+        out.push_str("\nAvailable Web Retrieval & Automation Capabilities:\n");
+        out.push_str("  1. Search Layer:    Fast DuckDuckGo search (web.search)\n");
+        out.push_str(
+            "  2. Fetch Layer:     Direct HTTP page reading & Markdown conversion (web.fetch)\n",
+        );
+        out.push_str(
+            "  3. Browser Sidecar: Headless Chromium engine (browser.open, browser.snapshot)\n",
+        );
+        out.push_str(
+            "  4. Actions:         Accessibility-first interaction (browser.click, browser.fill)\n",
+        );
+        out.push_str(
+            "  5. Artifacts:       Screenshots & PDF documents (browser.screenshot, browser.pdf)\n",
+        );
+        out.push_str("  6. Diagnostics:     Console & Network telemetry (browser.console, browser.network)\n\n");
+        out.push_str("Usage:\n");
+        out.push_str("  /browser                  Show browser and web status\n");
+        out.push_str("  /browser status           Show detailed status\n");
+
+        Ok(CommandOutput::Text(out))
+    }
+}
+
 /// Extensible command registry storing and dispatching commands.
 #[derive(Default)]
 pub struct CommandRegistry {
@@ -823,7 +902,7 @@ impl CommandRegistry {
         }
     }
 
-    /// Creates a registry pre-populated with standard default commands (`/help`, `/status`, `/model`, `/switch`, `/new`, `/sessions`, `/tools`, `/workspace`, `/permissions`, `/mcp`, `/agents`, `/exit`).
+    /// Creates a registry pre-populated with standard default commands (`/help`, `/status`, `/model`, `/switch`, `/new`, `/sessions`, `/tools`, `/workspace`, `/permissions`, `/mcp`, `/agents`, `/browser`, `/exit`).
     pub fn with_defaults() -> Self {
         let mut registry = Self::new();
         registry.register(HelpCommand);
@@ -837,6 +916,7 @@ impl CommandRegistry {
         registry.register(PermissionsCommand);
         registry.register(McpCommand);
         registry.register(AgentsCommand);
+        registry.register(BrowserCommand);
         registry.register(ExitCommand);
         registry
     }

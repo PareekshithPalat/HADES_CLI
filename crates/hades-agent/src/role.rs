@@ -28,6 +28,10 @@ pub enum AgentRole {
     SystemInvestigator,
     /// General multi-disciplinary specialist for composite subtasks.
     GeneralSpecialist,
+    /// Automated web navigation, research, and documentation extraction specialist.
+    BrowserAgent,
+    /// Web frontend end-to-end testing, UI interaction, and network diagnostics specialist.
+    WebTestingAgent,
     /// User-defined or dynamic custom agent role.
     Custom(String),
 }
@@ -48,6 +52,8 @@ impl AgentRole {
             Self::FileInvestigator => "File Investigator",
             Self::SystemInvestigator => "System Investigator",
             Self::GeneralSpecialist => "General Specialist",
+            Self::BrowserAgent => "Browser Agent",
+            Self::WebTestingAgent => "Web Testing Agent",
             Self::Custom(name) => name.as_str(),
         }
     }
@@ -81,6 +87,12 @@ impl AgentRole {
                 "Gathers system telemetry, active process states, and network metrics."
             }
             Self::GeneralSpecialist => "Performs focused multi-step investigation and reasoning.",
+            Self::BrowserAgent => {
+                "Navigates web pages, inspects accessibility trees, and extracts structured documentation."
+            }
+            Self::WebTestingAgent => {
+                "Interacts with web applications, executes browser automation, and inspects network/console logs."
+            }
             Self::Custom(_) => "Custom specialized domain agent.",
         }
     }
@@ -106,6 +118,12 @@ impl AgentRole {
                 "Inspect host system environment, platform, and runtime health."
             }
             Self::GeneralSpecialist => "Execute the assigned specialized objective accurately.",
+            Self::BrowserAgent => {
+                "Navigate to target web pages and extract structured information."
+            }
+            Self::WebTestingAgent => {
+                "Perform end-to-end browser interactions and verify web behaviors."
+            }
             Self::Custom(_) => "Execute custom specialized task.",
         }
     }
@@ -113,7 +131,7 @@ impl AgentRole {
     /// Returns whether this agent role is authorized to perform mutating operations (e.g. file writing).
     pub fn is_mutating_allowed(&self) -> bool {
         match self {
-            Self::Implementer | Self::GeneralSpecialist => true,
+            Self::Implementer | Self::GeneralSpecialist | Self::WebTestingAgent => true,
             Self::Planner
             | Self::Researcher
             | Self::Analyst
@@ -123,7 +141,8 @@ impl AgentRole {
             | Self::Debugger
             | Self::SecurityReviewer
             | Self::FileInvestigator
-            | Self::SystemInvestigator => false,
+            | Self::SystemInvestigator
+            | Self::BrowserAgent => false,
             Self::Custom(_) => false,
         }
     }
@@ -137,6 +156,12 @@ impl AgentRole {
                 "filesystem.read",
                 "filesystem.list",
                 "system.runtime.*",
+                "web.*",
+                "browser.open",
+                "browser.snapshot",
+                "browser.extract_*",
+                "browser.get_links",
+                "browser.screenshot",
             ],
             Self::Analyst => vec!["workspace.*", "filesystem.read", "filesystem.list"],
             Self::Explorer => vec!["workspace.*", "filesystem.list", "filesystem.read"],
@@ -169,7 +194,24 @@ impl AgentRole {
             ],
             Self::FileInvestigator => vec!["filesystem.read", "filesystem.list", "workspace.*"],
             Self::SystemInvestigator => vec!["system.*", "environment.*", "shell.execute"],
-            Self::GeneralSpecialist => vec!["filesystem.*", "workspace.*", "system.*", "shell.*"],
+            Self::GeneralSpecialist => vec![
+                "filesystem.*",
+                "workspace.*",
+                "system.*",
+                "shell.*",
+                "web.*",
+                "browser.*",
+            ],
+            Self::BrowserAgent => vec![
+                "web.*",
+                "browser.open",
+                "browser.snapshot",
+                "browser.extract_*",
+                "browser.get_links",
+                "browser.screenshot",
+                "browser.pdf",
+            ],
+            Self::WebTestingAgent => vec!["web.*", "browser.*"],
             Self::Custom(_) => vec!["workspace.*", "filesystem.read", "filesystem.list"],
         }
     }
@@ -213,6 +255,12 @@ impl AgentRole {
             Self::GeneralSpecialist => {
                 "You are a GENERAL SPECIALIST subagent. Your responsibility is to perform the designated task accurately, concisely, and safely within bounds."
             }
+            Self::BrowserAgent => {
+                "You are the BROWSER AGENT. Your responsibility is to navigate web pages, inspect accessibility elements via structured references, and retrieve documentation."
+            }
+            Self::WebTestingAgent => {
+                "You are the WEB TESTING AGENT. Your responsibility is to perform browser-based automation, execute UI actions (clicks, forms, scrolling), and diagnose web errors."
+            }
             Self::Custom(_) => {
                 "You are a CUSTOM specialized subagent. Execute the designated task accurately and report structured conclusions back to the primary Hades orchestrator."
             }
@@ -234,6 +282,8 @@ impl AgentRole {
             Self::FileInvestigator => 30,
             Self::SystemInvestigator => 30,
             Self::GeneralSpecialist => 60,
+            Self::BrowserAgent => 60,
+            Self::WebTestingAgent => 90,
             Self::Custom(_) => 45,
         }
     }

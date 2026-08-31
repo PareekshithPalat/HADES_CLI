@@ -20,6 +20,7 @@ hades-provider.workspace = true
 hades-mcp.workspace = true
 hades-tools.workspace = true
 hades-agent.workspace = true
+hades-browser.workspace = true
 clap.workspace = true
 tokio.workspace = true
 tracing.workspace = true
@@ -38,3 +39,7 @@ async-trait.workspace = true
 [[test]]
 name = "orchestration_integration_tests"
 path = "../../tests/orchestration_integration_tests.rs"
+
+[[test]]
+name = "browser_integration_tests"
+path = "../../tests/browser_integration_tests.rs"

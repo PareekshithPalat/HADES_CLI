@@ -399,6 +399,53 @@ pub enum HadesEvent {
         summary: String,
         total_tokens: Option<u32>,
     },
+
+    /// Browser sidecar process started.
+    BrowserStarted {
+        timestamp: DateTime<Utc>,
+        session_id: String,
+        browser: String,
+        mode: String,
+    },
+
+    /// Browser sidecar process stopped.
+    BrowserStopped {
+        timestamp: DateTime<Utc>,
+        session_id: String,
+    },
+
+    /// Browser navigated to a page.
+    BrowserNavigated {
+        timestamp: DateTime<Utc>,
+        session_id: String,
+        url: String,
+        title: String,
+    },
+
+    /// Browser captured accessibility snapshot.
+    BrowserSnapshotCaptured {
+        timestamp: DateTime<Utc>,
+        session_id: String,
+        url: String,
+        element_count: usize,
+    },
+
+    /// Browser performed an interactive action.
+    BrowserActionExecuted {
+        timestamp: DateTime<Utc>,
+        session_id: String,
+        action: String,
+        target: String,
+        success: bool,
+    },
+
+    /// Browser created an artifact.
+    BrowserArtifactGenerated {
+        timestamp: DateTime<Utc>,
+        session_id: String,
+        artifact_type: String,
+        path: PathBuf,
+    },
 }
 
 impl HadesEvent {
@@ -659,6 +706,12 @@ impl HadesEvent {
             Self::TaskFailed { timestamp, .. } => *timestamp,
             Self::OrchestrationCancelled { timestamp, .. } => *timestamp,
             Self::OrchestrationCompleted { timestamp, .. } => *timestamp,
+            Self::BrowserStarted { timestamp, .. } => *timestamp,
+            Self::BrowserStopped { timestamp, .. } => *timestamp,
+            Self::BrowserNavigated { timestamp, .. } => *timestamp,
+            Self::BrowserSnapshotCaptured { timestamp, .. } => *timestamp,
+            Self::BrowserActionExecuted { timestamp, .. } => *timestamp,
+            Self::BrowserArtifactGenerated { timestamp, .. } => *timestamp,
         }
     }
 }

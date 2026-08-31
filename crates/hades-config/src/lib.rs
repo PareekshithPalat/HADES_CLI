@@ -4,8 +4,8 @@ pub mod service;
 
 pub use error::ConfigError;
 pub use model::{
-    ActiveModelConfig, GeneralConfig, HadesConfig, McpConfig, McpServerConfig, McpTransportType,
-    UiConfig, CURRENT_CONFIG_VERSION,
+    ActiveModelConfig, BrowserConfig, GeneralConfig, HadesConfig, McpConfig, McpServerConfig,
+    McpTransportType, UiConfig, CURRENT_CONFIG_VERSION,
 };
 pub use service::ConfigService;
 

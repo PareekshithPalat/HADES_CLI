@@ -54,6 +54,7 @@ pub struct HadesApp {
     pending_approval: Option<PendingApproval>,
     mcp_manager: McpServerManager,
     orchestrator: hades_agent::AgentOrchestrator,
+    browser_manager: Arc<hades_browser::BrowserManager>,
     version: &'static str,
 }
 
@@ -85,11 +86,18 @@ impl HadesApp {
 
         let current_dir = std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."));
         let workspace_info = WorkspaceDetector::detect(&current_dir);
-        let tool_registry = ToolRegistry::default_registry();
+        let mut tool_registry = ToolRegistry::default_registry();
         let permission_engine = PermissionEngine::new();
         let mcp_manager =
             McpServerManager::new(&workspace_info.current_dir).with_event_bus(event_bus.clone());
         let orchestrator = hades_agent::AgentOrchestrator::new().with_event_bus(event_bus.clone());
+        let browser_manager = Arc::new(
+            hades_browser::BrowserManager::new(&workspace_info.current_dir)
+                .with_event_bus(event_bus.clone()),
+        );
+
+        // Register Phase 6 Web Intelligence and Browser Automation Tool Suite
+        hades_browser::BrowserToolSet::register_all(&mut tool_registry, browser_manager.clone());
 
         Self {
             state: AppState::Startup,
@@ -109,6 +117,7 @@ impl HadesApp {
             pending_approval: None,
             mcp_manager,
             orchestrator,
+            browser_manager,
             version: APP_VERSION,
         }
     }
@@ -431,6 +440,11 @@ impl HadesApp {
     /// Returns mutable reference to the MCP server manager.
     pub fn mcp_manager_mut(&mut self) -> &mut McpServerManager {
         &mut self.mcp_manager
+    }
+
+    /// Returns the browser automation and web retrieval manager reference.
+    pub fn browser_manager(&self) -> Arc<hades_browser::BrowserManager> {
+        self.browser_manager.clone()
     }
 
     /// Synchronizes discovered MCP tools from active servers into the core tool registry.
@@ -1583,6 +1597,8 @@ impl HadesApp {
             })
             .collect();
 
+        let browser_status = Some(self.browser_manager.status());
+
         let mut context = CommandContext::new(
             self.state,
             &self.config,
@@ -1601,6 +1617,7 @@ impl HadesApp {
             Vec::new(),
         )
         .with_mcp_summaries(mcp_summaries)
+        .with_browser(browser_status, Some(self.browser_manager.clone()))
         .with_raw_input(input);
 
         let result = self.command_registry.execute(input, &mut context);

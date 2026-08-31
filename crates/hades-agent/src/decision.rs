@@ -153,6 +153,24 @@ impl DecisionEngine {
                 );
             }
 
+            let has_web_testing = text.contains("browser test")
+                || (text.contains("web") && text.contains("e2e"))
+                || (text.contains("test") && text.contains("frontend") && text.contains("ui"));
+
+            if has_web_testing {
+                return OrchestrationDecision::delegate(
+                    OrchestrationStrategy::PlanAndExecute,
+                    "Web application end-to-end testing workflow detected.",
+                    vec![
+                        AgentRole::Planner,
+                        AgentRole::BrowserAgent,
+                        AgentRole::WebTestingAgent,
+                        AgentRole::Tester,
+                    ],
+                    "Medium (3x)",
+                );
+            }
+
             if prompt.len() > 200
                 && (text.contains("and then") || text.contains("also") || text.contains("finally"))
             {
