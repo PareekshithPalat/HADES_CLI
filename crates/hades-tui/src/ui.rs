@@ -171,27 +171,9 @@ fn render_conversation(frame: &mut Frame, app: &HadesApp, state: &mut TuiState, 
     if state.turns.is_empty() && state.active_output.is_none() && state.error_message.is_none() {
         lines.push(Line::from(""));
         if width >= 60 {
-            for l in HadesTheme::banner().lines() {
-                if !l.is_empty() {
-                    lines.push(Line::from(Span::styled(
-                        format!("  {l}"),
-                        Style::default()
-                            .fg(HadesTheme::RATATUI_ORANGE)
-                            .add_modifier(Modifier::BOLD),
-                    )));
-                }
-            }
+            lines.extend(HadesTheme::banner().lines);
         } else {
-            for l in HadesTheme::compact_banner().lines() {
-                if !l.is_empty() {
-                    lines.push(Line::from(Span::styled(
-                        format!("  {l}"),
-                        Style::default()
-                            .fg(HadesTheme::RATATUI_ORANGE)
-                            .add_modifier(Modifier::BOLD),
-                    )));
-                }
-            }
+            lines.extend(HadesTheme::compact_banner().lines);
         }
 
         lines.push(Line::from(""));

@@ -439,11 +439,16 @@ mod tests {
     #[test]
     fn test_hades_theme_and_branding() {
         assert!(HadesTheme::TRIDENT == "🜲" || HadesTheme::TRIDENT == "🔱");
-        assert!(
-            HadesTheme::banner().contains("H A D E S")
-                || HadesTheme::banner().contains("Universal AI Agent")
-        );
-        assert!(HadesTheme::compact_banner().contains("H A D E S"));
+        let banner = HadesTheme::banner();
+        assert!(!banner.lines.is_empty());
+        let compact = HadesTheme::compact_banner();
+        assert!(!compact.lines.is_empty());
+        let combined: String = compact.lines[0]
+            .spans
+            .iter()
+            .map(|s| s.content.as_ref())
+            .collect();
+        assert!(combined.contains("HADES"));
     }
 
     #[test]
