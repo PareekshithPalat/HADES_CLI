@@ -463,7 +463,6 @@ pub enum HadesEvent {
     },
 }
 
-
 impl HadesEvent {
     /// Creates an `ApplicationStarted` event at the current time.
     pub fn app_started(version: impl Into<String>) -> Self {
@@ -733,4 +732,3 @@ impl HadesEvent {
         }
     }
 }
-

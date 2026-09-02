@@ -17,7 +17,6 @@ pub use error::{CommandError, CoreError};
 pub use notification::{NotificationKind, NotificationService, SoundPlayer};
 pub use state::AppState;
 
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -154,7 +153,6 @@ mod tests {
             _ => panic!("Expected Text output for /notify"),
         }
     }
-
 
     #[test]
     fn test_status_command_execution() {

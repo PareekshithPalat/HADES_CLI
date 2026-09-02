@@ -1,6 +1,6 @@
 {
   "name": "@pareekshith/hadey",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "HADES — Universal AI Agent CLI Runtime",
   "keywords": [
     "ai",
@@ -29,7 +29,7 @@
   },
   "homepage": "https://github.com/PareekshithPalat/HADES_CLI#readme",
   "publishConfig": {
-  "access": "public"
-},
+    "access": "public"
+  },
   "type": "commonjs"
 }

@@ -9,7 +9,6 @@ pub use model::{
 };
 pub use service::ConfigService;
 
-
 #[cfg(test)]
 mod tests {
     use super::*;

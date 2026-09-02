@@ -56,14 +56,10 @@ impl SoundPlayer {
                 ),
             };
 
-            let _ = Command::new("afplay")
-                .arg(first_sound)
-                .status();
+            let _ = Command::new("afplay").arg(first_sound).status();
 
             if let Some(second) = second_sound {
-                let _ = Command::new("afplay")
-                    .arg(second)
-                    .status();
+                let _ = Command::new("afplay").arg(second).status();
             }
         }
 
@@ -82,11 +78,7 @@ impl SoundPlayer {
             let _ = Command::new("paplay")
                 .arg(sound_file)
                 .status()
-                .or_else(|_| {
-                    Command::new("aplay")
-                        .arg(sound_file)
-                        .status()
-                });
+                .or_else(|_| Command::new("aplay").arg(sound_file).status());
         }
 
         #[cfg(target_os = "windows")]
@@ -119,7 +111,7 @@ impl SoundPlayer {
 
         let mut out = stdout();
         for _ in 0..count {
-            let _ = print!("\x07");
+            print!("\x07");
         }
         let _ = out.flush();
     }
@@ -207,8 +199,10 @@ mod tests {
 
     #[test]
     fn test_notification_service_disabled() {
-        let mut config = NotificationConfig::default();
-        config.enabled = false;
+        let config = NotificationConfig {
+            enabled: false,
+            ..Default::default()
+        };
 
         let service = NotificationService::new(config, None);
         // Should return early without crashing

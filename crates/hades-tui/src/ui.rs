@@ -81,7 +81,6 @@ pub fn render(frame: &mut Frame, app: &HadesApp, state: &mut TuiState) {
         frame.render_widget(para, toast_area);
     }
 
-
     // Modal Overlays (Minimal, clean floating dialogs)
     match app.state() {
         AppState::CommandPalette => render_command_palette(frame, app, state, size),
@@ -627,7 +626,6 @@ fn render_status_bar(frame: &mut Frame, app: &HadesApp, state: &TuiState, area: 
     let paragraph = Paragraph::new(status_line);
     frame.render_widget(paragraph, area);
 }
-
 
 /// Helper computing a centered popup rectangle given percentage dimensions.
 fn centered_rect(percent_x: u16, percent_y: u16, r: Rect) -> Rect {
@@ -1443,8 +1441,6 @@ fn render_tool_approval(frame: &mut Frame, app: &HadesApp, state: &TuiState, are
         .borders(Borders::ALL)
         .border_type(BorderType::Double)
         .border_style(Style::default().fg(HadesTheme::RATATUI_FIRE));
-
-
 
     let inner = block.inner(popup_area);
     frame.render_widget(block, popup_area);

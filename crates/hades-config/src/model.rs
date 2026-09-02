@@ -79,7 +79,6 @@ impl HadesConfig {
     }
 }
 
-
 /// General Hades application configuration.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct GeneralConfig {
@@ -461,10 +460,6 @@ pub struct BrowserConfig {
     /// Whether to run browser in headless mode.
     #[serde(default = "default_true")]
     pub headless: bool,
-}
-
-fn default_true() -> bool {
-    true
 }
 
 fn default_browser_mode() -> String {

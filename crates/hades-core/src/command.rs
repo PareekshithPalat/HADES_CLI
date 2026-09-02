@@ -778,7 +778,8 @@ impl Command for NotifyCommand {
         output.push_str(&format!("Sound Theme:           {}\n\n", n.sound_theme));
 
         if n.enabled {
-            output.push_str("🔔 Dispatched test audio sound chimes & desktop notification alert.\n");
+            output
+                .push_str("🔔 Dispatched test audio sound chimes & desktop notification alert.\n");
             let config_clone = n.clone();
             std::thread::spawn(move || {
                 let service = crate::notification::NotificationService::new(config_clone, None);
@@ -797,7 +798,6 @@ impl Command for NotifyCommand {
         } else {
             output.push_str("ℹ️ Notifications/sounds are currently disabled in configuration.\n");
         }
-
 
         Ok(CommandOutput::Text(output))
     }
@@ -1158,7 +1158,6 @@ impl CommandRegistry {
         registry.register(ExitCommand);
         registry
     }
-
 
     /// Registers a new command into the registry.
     pub fn register<C: Command + 'static>(&mut self, command: C) {

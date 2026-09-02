@@ -100,10 +100,8 @@ impl HadesApp {
 
         // Register Phase 6 Web Intelligence and Browser Automation Tool Suite
         hades_browser::BrowserToolSet::register_all(&mut tool_registry, browser_manager.clone());
-        let notification_service = NotificationService::new(
-            HadesConfig::default().notification,
-            Some(event_bus.clone()),
-        );
+        let notification_service =
+            NotificationService::new(HadesConfig::default().notification, Some(event_bus.clone()));
 
         Self {
             state: AppState::Startup,
@@ -178,7 +176,6 @@ impl HadesApp {
             .update_config(self.config.notification.clone());
         self.event_bus
             .publish(HadesEvent::config_loaded(self.config_service.config_path()));
-
 
         // 3. Model & Provider initialization
         let mut model_activated = false;
@@ -587,14 +584,16 @@ impl HadesApp {
                 self.notify(
                     NotificationKind::InputRequired,
                     "Tool Approval Required",
-                    &format!("Authorization required for tool '{}' ({})", call.tool_name, risk),
+                    &format!(
+                        "Authorization required for tool '{}' ({})",
+                        call.tool_name, risk
+                    ),
                 );
                 Ok(ToolResult::permission_denied(
                     &call.id,
                     &call.tool_name,
                     "Tool execution paused awaiting user authorization",
                 ))
-
             }
             EvaluationResult::Permitted { .. } => {
                 let res = self.run_tool_internal(tool, call, context).await;
@@ -1591,16 +1590,11 @@ impl HadesApp {
                         "Task Completed",
                         "Agent response completed successfully.",
                     );
-                    self.event_bus.publish(HadesEvent::TaskCompleted {
-                        timestamp: chrono::Utc::now(),
-                        summary: "Agent response generation completed".to_string(),
-                    });
                 }
             }
         }
         Ok(())
     }
-
 
     /// Executes a command input string, publishing relevant lifecycle events.
     pub fn execute_command(&mut self, input: &str) -> Result<CommandOutput, CoreError> {
