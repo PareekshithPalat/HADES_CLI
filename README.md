@@ -2,7 +2,7 @@
 
 <img src="assets/hadesbanner.png" alt="HADES-CLI Banner" width="100%" />
 
-# HADES-CLI
+# HADES-CLI-Beta
 
 ### Universal AI Agent CLI Runtime
 
