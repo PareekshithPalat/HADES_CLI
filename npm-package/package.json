@@ -1,0 +1,35 @@
+{
+  "name": "@pareekshith/hadey",
+  "version": "0.1.0",
+  "description": "HADES — Universal AI Agent CLI Runtime",
+  "keywords": [
+    "ai",
+    "cli",
+    "agent",
+    "hades",
+    "ai-agent",
+    "coding-agent"
+  ],
+  "license": "MIT",
+  "bin": {
+    "hadey": "bin/hadey.js"
+  },
+  "files": [
+    "bin/",
+    "binaries/",
+    "README.md",
+    "LICENSE"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/PareekshithPalat/HADES_CLI.git"
+  },
+  "bugs": {
+    "url": "https://github.com/PareekshithPalat/HADES_CLI/issues"
+  },
+  "homepage": "https://github.com/PareekshithPalat/HADES_CLI#readme",
+  "publishConfig": {
+  "access": "public"
+},
+  "type": "commonjs"
+}

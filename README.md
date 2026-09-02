@@ -1,6 +1,6 @@
 <div align="center">
 
-<div align="center">
+<img src="assets/hadesbanner.png" alt="HADES-CLI Banner" width="100%" />
 
 # HADES-CLI
 
@@ -8,9 +8,9 @@
 
 **Any model. Any provider. Any project. Any machine. Any task. One user-controlled AI agent.**
 
-</div>
+<br/>
 
-[![Release](https://img.shields.io/badge/Release-Beta%20v0.1.1-FF5500?style=for-the-badge&logoColor=white)](https://github.com/PareekshithPalat/HADES_CLI)
+[![npm version](https://img.shields.io/npm/v/@pareekshith/hadey?style=for-the-badge&logo=npm&logoColor=white&color=CB3837)](https://www.npmjs.com/package/@pareekshith/hadey)
 [![Rust](https://img.shields.io/badge/Rust-1.80%2B-orange?style=for-the-badge&logo=rust&logoColor=white)](https://www.rust-lang.org/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-FFB800?style=for-the-badge)](LICENSE)
 [![Platform](https://img.shields.io/badge/Platform-Windows%20%7C%20macOS%20%7C%20Linux-454545?style=for-the-badge)](https://github.com/PareekshithPalat/HADES_CLI)
@@ -21,363 +21,239 @@
 
 > **"Any model. Any provider. Any project. Any machine. Any task. One user-controlled AI agent."**
 
-<br/>
-
-![HADES Hero Banner](assets/hadesbanner.png)
-
 </div>
+
+---
+
+## Quick Start
+
+HADES is distributed globally via npm. No local Rust compilation required.
+
+### 1. Install Globally
+
+```bash
+npm install -g @pareekshith/hadey
+```
+
+### 2. Launch
+
+Run `hadey` inside any project directory or repository:
+
+```bash
+hadey
+```
+
+### 3. Connect a Model
+
+- Press `/` to open the command palette and select `/model`.
+- Choose your provider:
+  - **Local (Free & Offline)**: Select **Ollama** (automatically detects models on `localhost:11434`).
+  - **Cloud Providers**: Select **OpenAI**, **Groq**, **DeepSeek**, or **Custom OpenAI-Compatible** and provide your API key.
+- Start building, debugging, refactoring, and automating!
 
 ---
 
 ## Overview
 
-**Hades** is a high-performance, universal AI agent CLI runtime engineered in Rust. Designed for software engineers, DevOps practitioners, and system administrators who demand total control, speed, and privacy, Hades unifies cloud LLMs (OpenAI, Groq, DeepSeek, OpenRouter) and local offline inference engines (Ollama, LM Studio, vLLM, LocalAI) into a single, cohesive, terminal-native workspace.
+**Hades** is a high-performance, universal AI agent CLI runtime engineered from the ground up in Rust. Built for software engineers, DevOps practitioners, and developers who demand speed, privacy, and full control over their workflows, Hades connects cloud LLMs and offline local models into a unified, sandboxed terminal cockpit.
 
-Equipped with a **29-tool autonomous agent runtime**, a strict **sandboxed permission engine**, **real-time token streaming**, and a full-screen **Ratatui terminal user interface**, Hades provides an interactive, low-latency cockpit for development, debugging, code generation, system diagnostics, and shell operation.
+Unlike browser-based assistants or opaque cloud coding tools, Hades executes natively on your machine with a strict permission engine, multi-agent orchestration, web intelligence, and Model Context Protocol (MCP) extensibility.
+
+```
+                  ┌─────────────────────────────────────────────────────────┐
+                  │                        HADES-CLI                        │
+                  │             Universal AI Agent CLI Runtime              │
+                  └────────────────────────────┬────────────────────────────┘
+                                               │
+       ┌───────────────────────┬───────────────┴───────────────┬───────────────────────┐
+       ▼                       ▼                               ▼                       ▼
+┌──────────────┐      ┌─────────────────┐             ┌─────────────────┐     ┌─────────────────┐
+│  AI Engine   │      │ 51-Tool Sandbox │             │   Multi-Agent   │     │ Web & Browser   │
+│ OpenAI / Groq│      │ Filesystem, OS, │             │  Orchestration  │     │ Direct Search & │
+│ DeepSeek     │      │ Shell, Network, │             │ Planner, Coder, │     │ Fetch, Headless │
+│ Local Ollama │      │ Process & Runtime│            │ Reviewer, DevOps│     │ Chromium Sidecar│
+└──────────────┘      └─────────────────┘             └─────────────────┘     └─────────────────┘
+```
 
 ---
 
 ## Architecture & Features
 
-![HADES Features & Architecture](assets/hadesarchitecture.png)
+<div align="center">
+  <img src="assets/hadesarchitecture.png" alt="HADES Features & Architecture" width="100%" />
+</div>
 
 ---
 
-## Core Capabilities
+## Key Capabilities
 
 ### 1. Universal Model & Provider Engine
-- **Cloud & Local Integration**: Seamlessly switch between cloud APIs (OpenAI, Groq, DeepSeek, OpenRouter) and local offline LLMs (Ollama, vLLM, LM Studio).
-- **Automatic Local Discovery**: Automatically scans and discovers local Ollama instances (`http://127.0.0.1:11434`) and available models without requiring manual API configuration.
-- **Capability Detection**: Dynamically inspects provider capabilities including streaming, function calling, tool payloads, vision, and context windows.
-- **Credential Protection**: API keys and tokens are securely stored in local configuration vaults (`~/.hades/credentials.json`) and automatically redacted from logs, state dumps, and terminal viewports.
+- **Cloud & Local Integration**: Seamlessly switch between cloud providers (OpenAI, Groq, DeepSeek, OpenRouter) and offline local models (Ollama, LM Studio, vLLM, LocalAI).
+- **Auto-Discovery for Local Models**: Automatically discovers local Ollama daemon instances (`http://127.0.0.1:11434`) and lists installed models with zero manual setup.
+- **Dynamic Capability Probing**: Inspects model capabilities on the fly (streaming, tool payloads, JSON schema validation, context window size).
+- **Secure Credential Vault**: API keys are securely stored in local encrypted files (`~/.hades/credentials.json`) and automatically redacted from logs, transcripts, and UI viewports.
 
-### 2. Autonomous Tool Execution & Sandbox Engine (29 Built-in Tools)
-- **Filesystem & Codebase Operations**: Safe file creation, surgical line-based editing, reading, directory scanning, and deletion within validated workspace boundaries.
-- **Shell Command Execution**: Run build tasks, test suites, and system commands with configurable execution timeouts and output bounds.
-- **System & Hardware Diagnostics**: Inspect OS platform details, CPU architecture, host uptime, memory allocation, and CPU core utilization.
-- **Process Management**: Search, inspect, list, and terminate host processes with detailed memory and CPU usage breakdowns.
-- **Network Diagnostics**: Inspect active network interfaces, test TCP socket availability, discover process ownership for open ports, and list active connections.
-- **Path Traversal Sandboxing**: Strict boundary enforcement restricts agent operations to the designated workspace root to prevent accidental or malicious system escapes.
-- **User Approval Controls**: Mutating actions (`system.process.terminate`, destructive shell commands) require explicit interactive user confirmation before execution.
+### 2. Sandboxed Tool Execution (51 Built-in Tools)
+- **Filesystem & Codebase Operations**: Safe file creation, surgical line-based editing, directory scanning, and deletion within validated workspace boundaries.
+- **Shell & Process Management**: Run build scripts, test suites, and terminal commands with configurable timeouts and output truncation guards.
+- **System & Network Diagnostics**: Inspect CPU, memory, uptime, open ports, socket states, and running processes with PID resolution.
+- **Path Traversal Sandboxing**: Strict boundary enforcement confines agent operations to the designated workspace root to prevent unintended system escapes.
+- **Interactive Risk Approvals**: Dangerous actions (`system.process.terminate`, destructive shell commands, custom evaluations) require explicit interactive user approval (`Allow Once`, `Allow Session`, `Deny`).
 
-### 3. Full-Screen Terminal Interface
-- **Fiery Dark-Mode Palette**: High-contrast terminal color scheme designed for maximum readability across light and dark terminal emulators.
-- **Application-Owned Viewport**: Native conversation viewport with auto-scroll, manual scroll lock, and incremental line-by-line navigation.
-- **Structured 5-Region Layout**: Pinned header border, scrollable conversation viewport, interactive prompt input row, status bar, and keymap footer.
-- **Clean Text Clipboard Export (`Ctrl+Y`)**: Extract clean Markdown text directly to the host system clipboard across macOS, Linux, and Windows.
-- **Interactive Command Palette (`/`)**: Access slash commands, session management, tool registries, and configuration dialogs via inline autocompletion.
+### 3. Multi-Agent Orchestration & Specialist Roles
+- **Hierarchical Agent Dispatch**: The orchestrator decomposes complex tasks into structured plans and coordinates specialist subagents.
+- **Dedicated Agent Roles**:
+  - **Architect**: System design, directory structure planning, and architectural reviews.
+  - **Coder**: Code implementation, refactoring, and bug fixes.
+  - **Researcher**: Codebase exploration, dependency inspection, and documentation retrieval.
+  - **Reviewer**: Code quality analysis, lint checks, and test coverage verification.
+  - **Security Auditor**: Vulnerability scanning, permission auditing, and secret leak detection.
+  - **DevOps**: Build optimization, containerization, CI/CD scripts, and environment configuration.
+  - **Browser Agent & Web Testing Agent**: Web exploration, live UI testing, and network diagnostics.
 
-### 4. Session Persistence & Context Architecture
-- **Multi-Session Isolation**: Persistent session storage with unique UUIDs, dynamic title generation, and disk caching (`~/.hades/data`).
-- **Deterministic Time Semantics**: Timestamps stored in UTC and formatted relative to the local timezone ("In use", "Today · 1:42 PM", "Yesterday", "3 days ago").
-- **Intelligent Context Compaction**: Automatically compacts conversation history to fit model context limits while preserving full, unabridged log transcripts on disk.
+### 4. Web Intelligence & Headless Browser Sidecar
+- **Zero-Overhead Search & Fetch**:
+  - **Direct HTTP Search (`web.search`)**: Fast DuckDuckGo search queries returning titles, URLs, and snippets without browser overhead.
+  - **Direct HTTP Fetch (`web.fetch`)**: Sanitizes HTML to clean, readable Markdown stripped of ads, scripts, and tracking tags.
+- **Headless Browser Automation (`browser.*`)**:
+  - Automatically discovers local Chrome, Chromium, Microsoft Edge, and Brave installations.
+  - Communicates directly via Chrome DevTools Protocol (CDP) over WebSockets.
+  - **Accessibility-First Snapshots**: Maps interactive DOM nodes to stable identifiers (`[ref_001] button "Submit"`).
+  - Dispatches clicks, form fills, keypresses, and scrolling with built-in loop detection tripwires.
+  - Generates high-resolution screenshots and PDF artifacts.
+  - Live inspection of JavaScript console logs and network traffic.
 
----
+### 5. Model Context Protocol (MCP) Integration
+- **Client & Server Support**: Implements the official MCP standard (`protocolVersion: 2024-11-05`).
+- **STDIO & Streamable HTTP Transports**: Connects to community MCP servers (`npx`, `uvx`, `python`, `docker`).
+- **Dynamic Tool Namespacing**: External tools are automatically registered (e.g. `github.create_issue`, `postgres.query_schema`) and guarded by HADES risk assessment.
+- **Hades as an MCP Server**: Expose HADES workspace inspection and diagnostics directly to Claude Desktop, Cursor, or external agents:
+  ```bash
+  hadey mcp-server --workspace /path/to/project
+  ```
 
-## Workspace Architecture
-
-Hades is organized as a modular Cargo workspace consisting of 8 focused crates:
-
-```mermaid
-graph TD
-    CLI[hades-cli<br/><i>Entry Point, CLI Parsing, Logging</i>] --> TUI[hades-tui<br/><i>Ratatui Interface & Input</i>]
-    TUI --> CORE[hades-core<br/><i>State Machine & Coordinator</i>]
-    CORE --> PROVIDER[hades-provider<br/><i>AI Adapters & Streaming</i>]
-    CORE --> TOOLS[hades-tools<br/><i>29 Sandboxed Agent Tools</i>]
-    CORE --> MCP[hades-mcp<br/><i>Model Context Protocol Client & Server</i>]
-    CORE --> STORAGE[hades-storage<br/><i>Session Repository & Persistence</i>]
-    CORE --> CONFIG[hades-config<br/><i>TOML Configuration Engine</i>]
-    CORE --> EVENTS[hades-events<br/><i>Async Pub/Sub Bus</i>]
-```
-
-### Crates Catalog
-
-| Crate | Purpose |
-| :--- | :--- |
-| `hades-cli` | Main binary entry point, argument parsing via `clap`, MCP server mode (`hades mcp-server`), file tracing. |
-| `hades-tui` | Terminal user interface built with `ratatui` and `crossterm`. 5-region layout, clipboard, themes. |
-| `hades-core` | Core application orchestrator, state machine (`AppState`), command registry, system prompts. |
-| `hades-provider` | Pluggable provider abstraction (`Provider`), model managers, credential vault, SSE streaming. |
-| `hades-tools` | 29 built-in sandboxed tools, permission engine, secret redactor, path security. |
-| `hades-mcp` | Model Context Protocol (MCP) client, multi-server manager, STDIO & HTTP transports, Hades MCP server mode. |
-| `hades-storage` | JSON/file session storage, conversation recovery, relative timestamp formatting. |
-| `hades-config` | Schema-validated TOML configuration management at `~/.hades/config.toml`. |
-| `hades-events` | Asynchronous Pub/Sub event bus for telemetry, lifecycle notifications, and audit logs. |
-
----
-
-## System Requirements
-
-| Requirement | Minimum | Recommended |
-| :--- | :--- | :--- |
-| **OS** | macOS 12+ (Intel / Apple Silicon)<br/>Linux (Kernel 5.4+ x86_64 / aarch64) | macOS 14+ / Ubuntu 22.04 LTS+ / Fedora 38+ |
-| **Rust Toolchain** | Rust 1.80.0 | Latest Stable Rust (`rustup update stable`) |
-| **C/C++ Compiler** | Clang (macOS) / GCC (Linux) | System default C toolchain |
-| **Terminal** | Any UTF-8 terminal with 256-color support | iTerm2, Alacritty, Kitty, WezTerm, GNOME Terminal |
-| **Local LLM Runtime** | Ollama (Optional for offline inference) | Ollama 0.3.0+ |
-
----
-
-## macOS Setup & Installation Guide
-
-### Prerequisites for macOS
-
-1. **Install Xcode Command Line Tools**:
-   ```bash
-   xcode-select --install
-   ```
-
-2. **Install Rust Toolchain**:
-   If Rust is not installed, run the official `rustup` installer:
-   ```bash
-   curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
-   ```
-   Ensure the Rust binary path is added to your shell profile:
-   ```bash
-   source "$HOME/.cargo/env"
-   ```
-
-3. **Verify Rust Version**:
-   ```bash
-   rustc --version
-   cargo --version
-   ```
-   *Requirement: Rust 1.80.0 or higher.*
-
----
-
-### macOS Build and Installation Steps
-
-1. **Clone the Repository**:
-   ```bash
-   git clone https://github.com/PareekshithPalat/HADES_CLI.git
-   cd HADES_CLI
-   ```
-
-2. **Build Release Binary**:
-   ```bash
-   cargo build --release
-   ```
-   The compiled binary will be generated at `target/release/hades`.
-
-3. **Install Binary to User Path**:
-   Copy the binary to a directory on your `$PATH` (e.g., `~/.local/bin` or `/usr/local/bin`):
-   ```bash
-   # Option A: User local binary directory (Recommended)
-   mkdir -p ~/.local/bin
-   cp target/release/hades ~/.local/bin/
-
-   # Option B: System-wide binary directory
-   sudo cp target/release/hades /usr/local/bin/
-   ```
-
-4. **Configure Shell PATH (if using `~/.local/bin`)**:
-   Add the following line to your `~/.zshrc` (or `~/.bash_profile`):
-   ```bash
-   export PATH="$HOME/.local/bin:$PATH"
-   ```
-   Reload shell configuration:
-   ```bash
-   source ~/.zshrc
-   ```
-
-5. **Initialize Configuration Directory**:
-   ```bash
-   mkdir -p ~/.hades/{data,logs}
-   ```
-
----
-
-### Setting Up Local LLM Inference on macOS (Ollama)
-
-1. **Install Ollama via Homebrew**:
-   ```bash
-   brew install ollama
-   ```
-
-2. **Start Ollama Service**:
-   ```bash
-   ollama serve
-   ```
-
-3. **Pull Recommended Models**:
-   ```bash
-   ollama run llama3.2
-   ```
-
-4. **Launch Hades**:
-   Hades will automatically detect your local Ollama instance running at `http://127.0.0.1:11434`.
-
----
-
-## Linux Setup & Installation Guide
-
-### Prerequisites for Linux
-
-Hades requires standard C build utilities, SSL headers, and clipboard system packages depending on your Linux distribution and display server (X11 or Wayland).
-
-#### Ubuntu / Debian / Linux Mint
-```bash
-sudo apt update
-sudo apt install -y build-essential pkg-config libssl-dev git curl xclip wl-clipboard
-```
-
-#### Fedora / RHEL / CentOS
-```bash
-sudo dnf groupinstall -y "Development Tools"
-sudo dnf install -y pkg-config openssl-devel git curl xclip wl-clipboard
-```
-
-#### Arch Linux / Manjaro
-```bash
-sudo pacman -Syu --needed base-devel openssl git curl xclip wl-clipboard
-```
-
-#### Alpine Linux
-```bash
-sudo apk add build-base openssl-dev pkgconf git curl xclip wl-clipboard
-```
-
----
-
-### Linux Build and Installation Steps
-
-1. **Install Rust via Rustup**:
-   ```bash
-   curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
-   source "$HOME/.cargo/env"
-   ```
-
-2. **Clone the Repository**:
-   ```bash
-   git clone https://github.com/PareekshithPalat/HADES_CLI.git
-   cd HADES_CLI
-   ```
-
-3. **Compile Optimized Release Binary**:
-   ```bash
-   cargo build --release
-   ```
-
-4. **Install Binary System-Wide or User-Local**:
-   ```bash
-   # System-wide installation
-   sudo install -m 0755 target/release/hades /usr/local/bin/hades
-
-   # Or user-local installation
-   mkdir -p ~/.local/bin
-   install -m 0755 target/release/hades ~/.local/bin/hades
-   ```
-
-5. **Verify Environment Variables**:
-   Ensure terminal environment supports UTF-8 and 256 colors:
-   ```bash
-   export TERM=xterm-256color
-   export LANG=en_US.UTF-8
-   ```
-
-6. **Initialize Data Directories**:
-   ```bash
-   mkdir -p ~/.hades/data ~/.hades/logs
-   ```
-
----
-
-### Setting Up Local LLM Inference on Linux (Ollama)
-
-1. **Install Ollama Service**:
-   ```bash
-   curl -fsSL https://ollama.com/install.sh | sh
-   ```
-
-2. **Enable and Start Systemd Daemon**:
-   ```bash
-   sudo systemctl enable --now ollama
-   ```
-
-3. **Verify Service Health**:
-   ```bash
-   curl http://127.0.0.1:11434/api/version
-   ```
-
-4. **Pull Local Models**:
-   ```bash
-   ollama pull llama3.2
-   ollama pull deepseek-r1:7b
-   ```
+### 6. Full-Screen Terminal Interface (Ratatui TUI)
+- **Fiery Dark-Mode Gradient**: High-contrast theme featuring the HADES trident identity (`🜲 HADES`).
+- **5-Region Responsive Layout**: Fixed header border, scrollable conversation viewport, multi-line prompt input, status bar, and keymap footer.
+- **Real-Time Token Streaming**: Low-latency rendering with manual scroll lock and incremental line navigation.
+- **Interactive Copy Mode (`Ctrl+Y`)**: Extract clean Markdown text directly to the system clipboard across macOS, Linux, and Windows.
+- **Command Palette (`/`)**: Access slash commands, session management, tool lists, and settings with fuzzy autocompletion.
 
 ---
 
 ## Usage Instructions & Workflows
 
-### Launching Hades
+### Launching HADES
 
 ```bash
-# Launch interactive TUI runtime in current working directory
-hades
+# Launch interactive TUI in current working directory
+hadey
 
-# Launch pointing to a specific project workspace
-cd /path/to/my-project && hades
+# Launch in a specific project workspace
+cd /path/to/my-project && hadey
 
-# Launch with custom configuration file
-hades --config ~/.config/hades/custom-config.toml
+# Resume a previous conversation session by ID
+hadey --session 3f9a1b2c-4d5e-6f7a-8b9c-0d1e2f3a4b5c
 
-# Specify custom storage directory
-hades --data-dir ~/hades_storage --log-dir ~/hades_logs
+# Launch with custom configuration and data paths
+hadey --config ~/.config/hades/custom.toml --data-dir ~/my_hades_storage
+
+# Launch as a background Model Context Protocol (MCP) server
+hadey mcp-server --workspace /path/to/project
 ```
 
----
-
-### Command Line Options
+### CLI Arguments
 
 ```text
-Usage: hades [OPTIONS]
+Usage: hadey [OPTIONS] [COMMAND]
+
+Commands:
+  mcp-server  Launch Hades in Model Context Protocol (MCP) server mode over STDIO
+  help        Print this message or the help of the given subcommand(s)
 
 Options:
-  -c, --config <FILE>     Custom path to configuration file (default: ~/.hades/config.toml)
-  -d, --data-dir <DIR>    Custom directory for persistent storage (default: ~/.hades/data)
-  -l, --log-dir <DIR>     Custom directory for log files (default: ~/.hades/logs)
-  -h, --help              Print help information
-  -V, --version           Print version information
+  -c, --config <FILE>        Custom path to configuration file (default: ~/.hades/config.toml)
+  -d, --data-dir <DIR>       Custom directory for persistent storage (default: ~/.hades/data)
+  -l, --log-dir <DIR>        Custom directory for log files (default: ~/.hades/logs)
+  -s, --session <SESSION_ID> Resume an existing conversation session by ID
+  -h, --help                 Print help
+  -V, --version              Print version
 ```
 
 ---
 
-### Provider Setup Workflow
+## Configuring AI Providers
 
-#### 1. OpenAI Setup (Cloud)
-1. Press `/` to open the command palette and select `/model`.
-2. Choose **OpenAI**.
-3. Select desired model (`gpt-4o`, `gpt-4o-mini`, `o1`, `o3-mini`).
-4. Input your OpenAI API key when prompted. Keys are encrypted and stored in `~/.hades/credentials.json`.
+Open the interactive model picker inside HADES by typing `/model` in the prompt:
 
-#### 2. Groq Setup (Ultra-Fast Inference)
-1. Obtain an API key from the Groq console.
-2. Select `/model` -> **Groq** in Hades.
-3. Choose a model (`llama-3.3-70b-versatile`, `mixtral-8x7b-32768`, `deepseek-r1-distill-llama-70b`).
-4. Enter your API key.
+### 1. Ollama (Local & Offline)
+1. Install and start Ollama (`ollama serve` or system daemon).
+2. Pull your preferred models: `ollama pull llama3.2` or `ollama pull deepseek-r1:7b`.
+3. Select `/model` -> **Ollama** in HADES. All local models appear automatically.
 
-#### 3. DeepSeek Setup (Cloud API)
-1. Generate an API key in the DeepSeek Developer Platform.
-2. Select `/model` -> **Custom OpenAI-Compatible** or **DeepSeek**.
-3. Configure base URL: `https://api.deepseek.com`
-4. Select `deepseek-chat` or `deepseek-reasoner`.
+### 2. OpenAI
+1. Obtain an API key from [platform.openai.com](https://platform.openai.com).
+2. Select `/model` -> **OpenAI**.
+3. Choose `gpt-4o`, `gpt-4o-mini`, `o1`, or `o3-mini`.
+4. Enter your API key (stored securely in `~/.hades/credentials.json`).
 
-#### 4. Ollama Setup (Local Offline)
-1. Ensure Ollama daemon is running (`ollama serve` or systemd service).
-2. Open `/model` -> **Ollama** in Hades.
-3. Hades automatically queries local endpoints and lists all pulled models without requiring API keys.
+### 3. Groq (Ultra-Fast Inference)
+1. Get an API key from [console.groq.com](https://console.groq.com).
+2. Select `/model` -> **Groq**.
+3. Choose `llama-3.3-70b-versatile`, `mixtral-8x7b-32768`, or `deepseek-r1-distill-llama-70b`.
 
-#### 5. Custom OpenAI-Compatible Endpoints (vLLM / LM Studio / LocalAI)
+### 4. DeepSeek
+1. Get an API key from [platform.deepseek.com](https://platform.deepseek.com).
+2. Select `/model` -> **Custom OpenAI-Compatible**.
+3. Base URL: `https://api.deepseek.com`, Model: `deepseek-chat` or `deepseek-reasoner`.
+
+### 5. Custom OpenAI-Compatible Endpoints (vLLM / LM Studio / LocalAI)
 1. Select `/model` -> **Custom OpenAI-Compatible**.
-2. Set Endpoint URL (e.g., `http://localhost:1234/v1` for LM Studio or `http://localhost:8000/v1` for vLLM).
-3. Specify Model Identifier and optional token authentication headers.
+2. Base URL: `http://localhost:1234/v1` (LM Studio) or `http://localhost:8000/v1` (vLLM).
+3. Specify Model Identifier and optional Bearer token.
 
 ---
 
-## Built-in Agent Tools (29 Tools)
+## Keyboard Shortcuts & Navigation
 
-Hades includes 29 specialized tools divided into logical capability categories. All tool calls execute within strict workspace boundary constraints.
+| Key Binding | Context | Action |
+| :--- | :--- | :--- |
+| `[Input]` + `Enter` | Prompt Input | Submit message or instruction to active agent. |
+| `/` | Empty Prompt | Open interactive Command Palette. |
+| `Ctrl + Y` | Active Viewport | Open Interactive Copy Mode (export turn to clipboard). |
+| `Ctrl + C` | Global | Cancel streaming response or exit application cleanly. |
+| `Up` / `Down` | Viewport | Scroll conversation view line-by-line. |
+| `PageUp` / `PageDn` | Viewport | Scroll conversation view by full screen page. |
+| `Home` / `End` | Viewport | Jump to beginning or end of conversation history. |
+| `Enter` | Modals & Dialogs | Confirm modal selection or execute selected palette action. |
+| `Esc` | Modals & Dialogs | Dismiss modal dialog and return focus to chat. |
+
+---
+
+## Slash Commands Reference
+
+Type `/` in the prompt input field to activate the command palette:
+
+| Command | Arguments | Description |
+| :--- | :--- | :--- |
+| `/help` | None | Display modal listing all available keyboard shortcuts and slash commands. |
+| `/model` | None | Open model picker to switch AI providers and target models. |
+| `/tools` | None | Inspect registry of 51 built-in agent tools and external MCP tools. |
+| `/browser`| None | Inspect web intelligence status, detected browser binary, and active tabs. |
+| `/mcp` | None | Inspect configured Model Context Protocol (MCP) servers, tools, and diagnostics. |
+| `/permissions` | None | View security rules, permission scopes, and risk levels for active session. |
+| `/workspace` | None | View active workspace root directory path and detected project metadata. |
+| `/sessions` | None | Open session manager to view, rename, switch, or delete saved conversations. |
+| `/new` | None | Create a new isolated conversation session. |
+| `/switch` | None | Quick-switch to a recent conversation session. |
+| `/status` | None | View active model status, system health, context token usage, and storage stats. |
+| `/exit` | None | Save session state and exit HADES cleanly. |
+
+---
+
+## Built-in Agent Tools Reference (51 Tools)
+
+### Core System & Filesystem Tools (`hades-tools`)
 
 | Category | Tool Identifier | Risk Level | Description |
 | :--- | :--- | :--- | :--- |
@@ -410,85 +286,65 @@ Hades includes 29 specialized tools divided into logical capability categories. 
 | **Runtime & PATH** | `system.runtime.which` | Safe | Locate binary path of executables present on host `PATH`. |
 | | `system.runtime.version` | Safe | Determine installed version string of runtime binaries (node, rustc, python). |
 
----
+### Web Intelligence & Browser Automation Tools (`hades-browser`)
 
-## Keyboard Shortcuts & Navigation
-
-| Key Binding | Context | Action |
-| :--- | :--- | :--- |
-| `[Input]` + `Enter` | Prompt Input | Submit prompt query or instruction to active model. |
-| `/` | Empty Prompt | Open interactive Command Palette. |
-| `Ctrl + Y` | Active Viewport | Launch Interactive Copy Mode for text export. |
-| `Ctrl + C` | Global | Cancel active generation stream or exit application cleanly. |
-| `Up` / `Down` | Conversation Viewport | Scroll conversation view line-by-line. |
-| `PageUp` / `PageDn` | Conversation Viewport | Scroll conversation view by full screen page. |
-| `Home` / `End` | Conversation Viewport | Jump directly to start or end of conversation history. |
-| `Enter` | Modals & Selection | Confirm modal selection or execute selected palette action. |
-| `Esc` | Modals & Dialogs | Dismiss modal dialog and return focus to conversation viewport. |
-
-### Interactive Copy Mode (`Ctrl+Y`)
-
-When reviewing multi-turn agent responses, press `Ctrl+Y` to enter the **Copy Select Modal**:
-- `Up` / `Down`: Highlight specific conversation turns (user query or assistant response).
-- `Enter` / `y` / `c`: Copy highlighted response text (unpolluted Markdown) to system clipboard.
-- `a`: Copy full conversation log to clipboard.
-- `Esc`: Cancel copy selection and return to terminal viewport.
-
----
-
-## Slash Commands Reference
-
-Type `/` in the prompt input field to activate the interactive command palette:
-
-| Command | Arguments | Description |
-| :--- | :--- | :--- |
-| `/help` | None | Display modal listing all available keyboard shortcuts and slash commands. |
-| `/model` | None | Open interactive model picker to switch AI providers and target models. |
-| `/tools` | None | View registry of 29 built-in agent tools and external MCP tools. |
-| `/mcp` | None | Inspect configured Model Context Protocol (MCP) servers, tools, and diagnostics. |
-| `/permissions` | None | Display security rules, permission scopes, and risk levels for active session. |
-| `/workspace` | None | Inspect current workspace root directory path and detected project metadata. |
-| `/sessions` | None | Open session manager to view, rename, switch, or delete saved conversations. |
-| `/new` | None | Create a new isolated conversation session. |
-| `/switch` | None | Quick-switch to recent conversation session. |
-| `/status` | None | View active model status, system health, context token usage, and storage stats. |
-| `/exit` | None | Save session state and exit Hades cleanly. |
+| Category | Tool Identifier | Risk Level | Description |
+| :--- | :--- | :--- | :--- |
+| **Web Retrieval** | `web.search` | Safe | Perform direct DuckDuckGo web search without launching a browser. |
+| | `web.fetch` | Safe | Fetch web page and extract clean Markdown (strips scripts, styles, SVGs). |
+| **Browser Sidecar** | `browser.start` | Low | Launch headless browser sidecar process (Chrome, Edge, Brave). |
+| | `browser.close` | Safe | Terminate browser session and clean up temporary profiles. |
+| | `browser.status` | Safe | Inspect browser runtime state, detected binary, and active tabs. |
+| | `browser.tabs` | Safe | List open browser tabs and URLs. |
+| | `browser.open` | Safe | Navigate active browser tab to a specified URL. |
+| | `browser.snapshot` | Safe | Capture accessibility tree mapping interactive DOM nodes to refs. |
+| | `browser.extract_text` | Safe | Extract visible text content from the active webpage. |
+| | `browser.extract_markdown` | Safe | Convert live rendered DOM structure to formatted Markdown. |
+| | `browser.get_links` | Safe | Extract all links (`<a>` tags) and destination URLs from current page. |
+| | `browser.get_page_info` | Safe | Retrieve page title, URL, viewport dimensions, and metadata. |
+| | `browser.click` | Medium | Click an interactive element by reference (`ref_001`) or selector. |
+| | `browser.fill` | Medium | Clear and type text into an input field by reference or selector. |
+| | `browser.select` | Medium | Select dropdown option in `<select>` elements. |
+| | `browser.scroll` | Safe | Scroll page viewport up, down, or to a specific coordinate. |
+| | `browser.hover` | Safe | Hover pointer over a specific element reference. |
+| | `browser.press_key` | Medium | Send keyboard keypresses (Enter, Tab, Escape, Arrow keys). |
+| | `browser.screenshot` | Safe | Capture high-resolution viewport or full-page PNG screenshot artifact. |
+| | `browser.pdf` | Safe | Print current webpage to a PDF document artifact. |
+| | `browser.console` | Safe | Retrieve live JavaScript console logs and browser error entries. |
+| | `browser.network` | Safe | Inspect live HTTP network requests, headers, and status codes. |
+| | `browser.evaluate` | High | Execute sandboxed JavaScript expression in page context. |
 
 ---
 
-## Model Context Protocol (MCP) Integration
+## Configuration Reference (`~/.hades/config.toml`)
 
-Hades supports the official **Model Context Protocol (MCP)** specification (`protocolVersion: 2024-11-05`), enabling seamless interoperability with external tool ecosystems and services:
-
-- **STDIO & Streamable HTTP Transports**: Connect to local CLI tools (`npx`, `uvx`, `python`, `docker`) or remote MCP HTTP endpoints.
-- **Dynamic Tool Namespacing**: Discovered MCP tools are cleanly namespaced (`<server>.<tool_name>`, e.g. `github.create_issue`, `postgres.query_schema`) and dynamically registered into the central tool registry.
-- **Unified Permission & Risk Classification**: External MCP tools undergo automated safety risk assessment (`Safe`, `Low`, `Medium`, `High`, `Critical`) and trigger interactive approval modals for mutating actions.
-- **Resources & Prompts**: Discover and read remote MCP resources and prompt templates.
-- **Hades MCP Server Mode**: Expose Hades workspace inspection and diagnostic tools to external clients (Cursor, Claude Desktop, autonomous agents):
-  ```bash
-  hades mcp-server --workspace /path/to/project
-  ```
-
----
-
-## Configuration Reference (`config.toml`)
-
-Hades loads configuration settings from `~/.hades/config.toml`. If the file does not exist, Hades automatically generates a default configuration on first launch.
+HADES automatically initializes `~/.hades/config.toml` on first run:
 
 ```toml
-# General System Configuration
+# General System Settings
 [general]
-app_name = "hades"
+app_name = "hadey"
 default_mode = "simple"
 
+# Terminal Interface Settings
 [ui]
 theme = "dark"
 show_status_bar = true
 
-# Default Model & Provider Configuration
+# Active Model & Provider Settings
 [model]
 provider_id = "groq"
 model_id = "llama-3.3-70b-versatile"
+
+# Browser Sidecar & Web Settings
+[browser]
+enabled = true
+mode = "isolated"              # "isolated" (temp profile) or "persistent"
+preferred_browser = "auto"     # "auto", "chrome", "chromium", "edge", "brave"
+headless = true
+default_timeout_seconds = 30
+max_actions_per_task = 100
+max_tabs = 10
 
 # Model Context Protocol (MCP) Configuration
 [mcp]
@@ -513,68 +369,74 @@ auto_start = false
 
 ---
 
-## Troubleshooting & Platform Guide
+## Workspace Architecture
 
-### macOS Specific Issues
+HADES is built as a modular, decoupled Cargo workspace consisting of 11 dedicated crates:
 
-#### 1. Clipboard Copy Failures (`Ctrl+Y` does not copy)
-- **Cause**: macOS sandbox or terminal session missing access to `pbcopy`/`pbpaste`.
-- **Solution**: Ensure your terminal emulator (Terminal.app, iTerm2, Alacritty) has permission to access system clipboard settings under **System Settings -> Privacy & Security**.
+```mermaid
+graph TD
+    CLI[hades-cli<br/><i>Binary Entry Point, CLI Args, MCP Server Mode</i>] --> TUI[hades-tui<br/><i>Ratatui Interface, 5-Region Layout, Copy Mode</i>]
+    TUI --> CORE[hades-core<br/><i>State Machine, Command Registry, Coordinator</i>]
+    CORE --> AGENT[hades-agent<br/><i>Multi-Agent Orchestrator, Specialist Roles & Planner</i>]
+    CORE --> BROWSER[hades-browser<br/><i>Web Search/Fetch & Headless Browser CDP Sidecar</i>]
+    CORE --> PROVIDER[hades-provider<br/><i>AI Provider Abstraction, Ollama Prober, SSE Streaming</i>]
+    CORE --> TOOLS[hades-tools<br/><i>29 Core Sandboxed Agent Tools & Permissions</i>]
+    CORE --> MCP[hades-mcp<br/><i>Model Context Protocol Client & Server Engine</i>]
+    CORE --> STORAGE[hades-storage<br/><i>Session Persistence & Timestamp Formatter</i>]
+    CORE --> CONFIG[hades-config<br/><i>TOML Configuration Engine</i>]
+    CORE --> EVENTS[hades-events<br/><i>Async Pub/Sub Telemetry Event Bus</i>]
+```
 
-#### 2. Xcode Toolchain Path Errors
-- **Cause**: Incomplete Xcode command line tools setup after macOS system upgrade.
-- **Solution**: Reset active developer path:
-  ```bash
-  sudo xcode-select --reset
-  xcode-select --install
-  ```
+### Crates Catalog
 
----
-
-### Linux Specific Issues
-
-#### 1. Clipboard Error: `No clipboard provider found`
-- **Cause**: On Linux, clipboard support relies on external utilities (`xclip` / `xsel` for X11, `wl-clipboard` for Wayland).
-- **Solution**: Install missing clipboard utility:
-  ```bash
-  # X11 Display Server
-  sudo apt install xclip   # Ubuntu/Debian
-  sudo dnf install xclip   # Fedora
-
-  # Wayland Display Server
-  sudo apt install wl-clipboard   # Ubuntu/Debian
-  sudo dnf install wl-clipboard   # Fedora
-  ```
-
-#### 2. OpenSSL Build Failure (`pkg-config` / `libssl` missing)
-- **Cause**: Missing C SSL headers required by `reqwest` native bindings.
-- **Solution**: Install `libssl-dev` (Ubuntu/Debian) or `openssl-devel` (Fedora/RHEL):
-  ```bash
-  sudo apt install pkg-config libssl-dev
-  ```
-
-#### 3. Ollama Connection Refused (`http://127.0.0.1:11434`)
-- **Cause**: Ollama daemon is not running or listening on standard localhost address.
-- **Solution**: Start the service and verify listening status:
-  ```bash
-  sudo systemctl restart ollama
-  curl http://127.0.0.1:11434/api/version
-  ```
+| Crate | Purpose |
+| :--- | :--- |
+| [`crates/hades-cli`](crates/hades-cli) | Main binary entry point, CLI arguments parsing via `clap`, file logging, and MCP server mode. |
+| [`crates/hades-tui`](crates/hades-tui) | Full-screen terminal UI built on `ratatui` and `crossterm`. 5-region layout, clipboard export, and theme rendering. |
+| [`crates/hades-core`](crates/hades-core) | Central application orchestrator, state machine (`AppState`), command registry, and execution loop. |
+| [`crates/hades-agent`](crates/hades-agent) | Multi-agent orchestration, specialist agent roles, task decomposition, and decision engine. |
+| [`crates/hades-browser`](crates/hades-browser) | Direct HTTP search & fetch, headless Chromium/Edge/Brave sidecar, CDP client, and accessibility snapshots. |
+| [`crates/hades-provider`](crates/hades-provider) | Universal provider abstraction (`Provider`), model managers, local Ollama prober, credential vault, SSE streaming. |
+| [`crates/hades-tools`](crates/hades-tools) | 29 core sandboxed tools (filesystem, shell, network, process, environment, runtime) and permission engine. |
+| [`crates/hades-mcp`](crates/hades-mcp) | Model Context Protocol (MCP) client, multi-server manager, STDIO & HTTP transports, and Hades MCP server mode. |
+| [`crates/hades-storage`](crates/hades-storage) | JSON/file session storage, conversation recovery, relative timestamp formatting. |
+| [`crates/hades-config`](crates/hades-config) | Schema-validated TOML configuration management at `~/.hades/config.toml`. |
+| [`crates/hades-events`](crates/hades-events) | Asynchronous Pub/Sub event bus for telemetry, lifecycle events, and audit logging. |
 
 ---
 
-## Testing & Quality Assurance
+## Building From Source (For Contributors)
 
-All workspace crates adhere to strict linting, safety, and testing standards:
+If you wish to contribute to HADES or compile directly from source:
+
+### Prerequisites
+- **Rust Toolchain**: Rust 1.80.0+ (`rustup update stable`)
+- **C/C++ Build Tools**: `build-essential` (Linux), Xcode CLI Tools (macOS), or MSVC/MinGW (Windows)
+
+### Build & Run
+```bash
+# Clone the repository
+git clone https://github.com/PareekshithPalat/HADES_CLI.git
+cd HADES_CLI
+
+# Build release binary
+cargo build --release
+
+# Run locally
+cargo run --bin hades
+```
+
+### Quality Assurance & Linting
+All contributions must pass the project's strict zero-warning quality gates:
 
 ```bash
-# 1. Format verification
+# 1. Formatting check
 cargo fmt --all -- --check
 
 # 2. Workspace compilation check
 cargo check --workspace --all-targets
 
-# 3. Run all unit and integration tests
+# 3. Full test suite (135+ tests)
 cargo test --workspace
 
 # 4. Strict Clippy lint check
@@ -583,25 +445,12 @@ cargo clippy --workspace --all-targets --all-features -- -D warnings
 
 ---
 
-## Development Roadmap
-
-- [x] **Phase 0**: Application lifecycle, event architecture, terminal safety.
-- [x] **Phase 1**: Universal Model & Provider engine, token streaming, credentials.
-- [x] **Phase 2**: Multi-session persistence, context compaction, time semantics.
-- [x] **Phase 3**: 29 sandboxed tools, permission engine, process/network diagnostics.
-- [x] **Phase 3.1**: 5-region input layout, clean text clipboard support, fiery TUI theme.
-- [x] **Phase 4**: Model Context Protocol (MCP) Client & Server Integration, unified execution, `/mcp` commands.
-- [ ] **Phase 5**: Multi-agent orchestration and collaborative subagents.
-- [ ] **Phase 6**: Built-in headless browser automation sidecar.
-
----
-
 ## Contributing
 
-Contributions are welcome. Please refer to [**CONTRIBUTING.md**](CONTRIBUTING.md) for development prerequisites, architecture guidelines, and pull request procedures.
+We welcome community contributions, bug reports, and feature requests. Please check [**CONTRIBUTING.md**](CONTRIBUTING.md) for development workflows and submission guidelines.
 
 ---
 
 ## License
 
-Distributed under the **MIT License**. See [`LICENSE`](LICENSE) for more details.
+Distributed under the **MIT License**. See [`LICENSE`](LICENSE) for complete details.
