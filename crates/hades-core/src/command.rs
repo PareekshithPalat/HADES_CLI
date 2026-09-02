@@ -1029,22 +1029,23 @@ impl Command for ExportCommand {
 
         if tokens.len() > 1 {
             for &token in &tokens[1..] {
-                match token.to_lowercase().as_str() {
-                    "md" | "markdown" => format = ExportFormat::Markdown,
-                    "json" => format = ExportFormat::Json,
-                    other => {
-                        let path = PathBuf::from(other);
-                        if let Some(ext) = path.extension().and_then(|e| e.to_str()) {
-                            if ext.eq_ignore_ascii_case("json") {
-                                format = ExportFormat::Json;
-                            } else if ext.eq_ignore_ascii_case("md")
-                                || ext.eq_ignore_ascii_case("markdown")
-                            {
-                                format = ExportFormat::Markdown;
-                            }
+                let lower = token.to_lowercase();
+                if lower == "md" || lower == "markdown" {
+                    format = ExportFormat::Markdown;
+                } else if lower == "json" {
+                    format = ExportFormat::Json;
+                } else {
+                    let path = PathBuf::from(token);
+                    if let Some(ext) = path.extension().and_then(|e| e.to_str()) {
+                        if ext.eq_ignore_ascii_case("json") {
+                            format = ExportFormat::Json;
+                        } else if ext.eq_ignore_ascii_case("md")
+                            || ext.eq_ignore_ascii_case("markdown")
+                        {
+                            format = ExportFormat::Markdown;
                         }
-                        target_path = Some(path);
                     }
+                    target_path = Some(path);
                 }
             }
         }
