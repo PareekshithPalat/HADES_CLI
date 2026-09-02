@@ -5,6 +5,7 @@ use tracing::{debug, info};
 use crate::command::{CommandContext, CommandOutput, CommandRegistry};
 use crate::context::{ContextManager, ContextReport, TokenEstimator};
 use crate::error::CoreError;
+use crate::notification::{NotificationKind, NotificationService};
 use crate::state::AppState;
 use hades_config::{ActiveModelConfig, ConfigService, HadesConfig};
 use hades_events::{EventBus, HadesEvent};
@@ -55,6 +56,7 @@ pub struct HadesApp {
     mcp_manager: McpServerManager,
     orchestrator: hades_agent::AgentOrchestrator,
     browser_manager: Arc<hades_browser::BrowserManager>,
+    notification_service: NotificationService,
     version: &'static str,
 }
 
@@ -98,6 +100,10 @@ impl HadesApp {
 
         // Register Phase 6 Web Intelligence and Browser Automation Tool Suite
         hades_browser::BrowserToolSet::register_all(&mut tool_registry, browser_manager.clone());
+        let notification_service = NotificationService::new(
+            HadesConfig::default().notification,
+            Some(event_bus.clone()),
+        );
 
         Self {
             state: AppState::Startup,
@@ -118,6 +124,7 @@ impl HadesApp {
             mcp_manager,
             orchestrator,
             browser_manager,
+            notification_service,
             version: APP_VERSION,
         }
     }
@@ -148,6 +155,16 @@ impl HadesApp {
         app
     }
 
+    /// Access notification service.
+    pub fn notification_service(&self) -> &NotificationService {
+        &self.notification_service
+    }
+
+    /// Triggers sound and desktop notification.
+    pub fn notify(&self, kind: NotificationKind, title: &str, message: &str) {
+        self.notification_service.notify(kind, title, message);
+    }
+
     /// Initializes all underlying subsystems, loads configuration, active model, and session state.
     pub fn init(&mut self) -> Result<(), CoreError> {
         info!("Initializing Hades core runtime (version {})", self.version);
@@ -157,8 +174,11 @@ impl HadesApp {
 
         // 2. Load or create configuration
         self.config = self.config_service.load_or_create()?;
+        self.notification_service
+            .update_config(self.config.notification.clone());
         self.event_bus
             .publish(HadesEvent::config_loaded(self.config_service.config_path()));
+
 
         // 3. Model & Provider initialization
         let mut model_activated = false;
@@ -561,14 +581,20 @@ impl HadesApp {
                     session_id,
                     tool_name: call.tool_name.clone(),
                     risk_level: risk.to_string(),
-                    summary,
-                    details,
+                    summary: summary.clone(),
+                    details: details.clone(),
                 });
+                self.notify(
+                    NotificationKind::InputRequired,
+                    "Tool Approval Required",
+                    &format!("Authorization required for tool '{}' ({})", call.tool_name, risk),
+                );
                 Ok(ToolResult::permission_denied(
                     &call.id,
                     &call.tool_name,
                     "Tool execution paused awaiting user authorization",
                 ))
+
             }
             EvaluationResult::Permitted { .. } => {
                 let res = self.run_tool_internal(tool, call, context).await;
@@ -1558,10 +1584,23 @@ impl HadesApp {
                     message_id: message_id.to_string(),
                     role: "assistant".to_string(),
                 });
+
+                if !is_interrupted {
+                    self.notify(
+                        NotificationKind::TaskCompleted,
+                        "Task Completed",
+                        "Agent response completed successfully.",
+                    );
+                    self.event_bus.publish(HadesEvent::TaskCompleted {
+                        timestamp: chrono::Utc::now(),
+                        summary: "Agent response generation completed".to_string(),
+                    });
+                }
             }
         }
         Ok(())
     }
+
 
     /// Executes a command input string, publishing relevant lifecycle events.
     pub fn execute_command(&mut self, input: &str) -> Result<CommandOutput, CoreError> {

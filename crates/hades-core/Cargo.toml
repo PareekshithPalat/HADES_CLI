@@ -22,6 +22,7 @@ tracing.workspace = true
 chrono.workspace = true
 uuid.workspace = true
 async-trait.workspace = true
+notify-rust.workspace = true
 tokio = { workspace = true, features = ["sync", "rt"] }
 
 [dev-dependencies]

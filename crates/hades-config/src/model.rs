@@ -20,6 +20,10 @@ pub struct HadesConfig {
     #[serde(default)]
     pub ui: UiConfig,
 
+    /// Notification and sound settings.
+    #[serde(default)]
+    pub notification: NotificationConfig,
+
     /// Configured active model and provider settings, if configured.
     #[serde(default)]
     pub model: Option<ActiveModelConfig>,
@@ -43,6 +47,7 @@ impl Default for HadesConfig {
             version: default_version(),
             general: GeneralConfig::default(),
             ui: UiConfig::default(),
+            notification: NotificationConfig::default(),
             model: None,
             mcp: McpConfig::default(),
             browser: BrowserConfig::default(),
@@ -61,6 +66,7 @@ impl HadesConfig {
 
         self.general.validate()?;
         self.ui.validate()?;
+        self.notification.validate()?;
 
         if let Some(ref m) = self.model {
             m.validate()?;
@@ -72,6 +78,7 @@ impl HadesConfig {
         Ok(())
     }
 }
+
 
 /// General Hades application configuration.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -238,6 +245,71 @@ impl McpConfig {
                 ));
             }
             server.validate(name)?;
+        }
+        Ok(())
+    }
+}
+
+/// Notification and sound configuration settings.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct NotificationConfig {
+    /// Global notification master toggle.
+    #[serde(default = "default_true")]
+    pub enabled: bool,
+
+    /// Whether sound alerts are enabled.
+    #[serde(default = "default_true")]
+    pub sound_enabled: bool,
+
+    /// Whether desktop OS pop-up notifications are enabled.
+    #[serde(default = "default_true")]
+    pub desktop_enabled: bool,
+
+    /// Whether to notify when user input/approval is required.
+    #[serde(default = "default_true")]
+    pub notify_on_input_required: bool,
+
+    /// Whether to notify when a task or model execution completes.
+    #[serde(default = "default_true")]
+    pub notify_on_task_completed: bool,
+
+    /// Whether to notify when an error occurs.
+    #[serde(default = "default_true")]
+    pub notify_on_error: bool,
+
+    /// Sound theme identifier ("default", "subtle", "bell_only").
+    #[serde(default = "default_sound_theme")]
+    pub sound_theme: String,
+}
+
+fn default_true() -> bool {
+    true
+}
+
+fn default_sound_theme() -> String {
+    "default".to_string()
+}
+
+impl Default for NotificationConfig {
+    fn default() -> Self {
+        Self {
+            enabled: true,
+            sound_enabled: true,
+            desktop_enabled: true,
+            notify_on_input_required: true,
+            notify_on_task_completed: true,
+            notify_on_error: true,
+            sound_theme: default_sound_theme(),
+        }
+    }
+}
+
+impl NotificationConfig {
+    pub fn validate(&self) -> Result<(), ConfigError> {
+        if self.sound_theme.trim().is_empty() {
+            return Err(ConfigError::Validation(
+                "Notification sound theme cannot be empty".to_string(),
+            ));
         }
         Ok(())
     }
