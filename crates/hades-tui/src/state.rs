@@ -427,6 +427,11 @@ impl TuiState {
         self.toast = Some((message.into(), std::time::Instant::now()));
     }
 
+    /// Emits a UI toast notification event.
+    pub fn show_toast(&mut self, message: impl Into<String>) {
+        self.set_toast(message);
+    }
+
     /// Returns the active toast message if within display duration (3 seconds).
     pub fn toast_text(&self) -> Option<&str> {
         if let Some((ref text, instant)) = self.toast {

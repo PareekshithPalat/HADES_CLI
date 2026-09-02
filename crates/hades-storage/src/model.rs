@@ -87,6 +87,9 @@ pub struct Message {
     pub metadata: MessageMetadata,
 }
 
+/// Type alias for message record compatibility.
+pub type MessageRecord = Message;
+
 impl Message {
     /// Creates a new user message.
     pub fn user(session_id: impl Into<String>, content: impl Into<String>) -> Self {

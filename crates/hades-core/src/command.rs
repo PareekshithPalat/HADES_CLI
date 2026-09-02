@@ -7,7 +7,11 @@ use serde::{Deserialize, Serialize};
 use crate::error::CommandError;
 use crate::state::AppState;
 use hades_config::HadesConfig;
-use hades_storage::{StorageHealth, StorageStatus};
+use std::path::{Path, PathBuf};
+
+use hades_storage::{
+    ExportFormat, SessionExporter, SessionImporter, SessionRecord, StorageHealth, StorageStatus,
+};
 
 /// Information entry for help listings.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -72,6 +76,12 @@ pub enum CommandOutput {
     /// Signal to open the interactive session switcher overlay.
     OpenSessionPicker,
 
+    /// Successful export of active conversation session.
+    ExportSuccess(PathBuf),
+
+    /// Successful import of session transcript.
+    ImportSuccess(Box<SessionRecord>),
+
     /// Application exit signal.
     Exit,
 }
@@ -119,6 +129,15 @@ impl fmt::Display for CommandOutput {
             Self::OpenModelSwitch => write!(f, "Opening model switch for current session..."),
             Self::NewSession => write!(f, "Created new conversation session."),
             Self::OpenSessionPicker => write!(f, "Opening session switcher..."),
+            Self::ExportSuccess(path) => {
+                write!(f, "Successfully exported session to {}", path.display())
+            }
+            Self::ImportSuccess(record) => write!(
+                f,
+                "Successfully imported session '{}' ({} messages)",
+                record.metadata.title,
+                record.messages.len()
+            ),
             Self::Exit => write!(f, "Exiting Hades..."),
         }
     }
@@ -157,6 +176,7 @@ pub struct CommandContext<'a> {
     pub mcp_summaries: Vec<hades_mcp::McpServerSummary>,
     pub browser_status: Option<hades_browser::BrowserStatus>,
     pub browser_manager: Option<Arc<hades_browser::BrowserManager>>,
+    pub active_session: Option<&'a SessionRecord>,
     pub raw_input: String,
 }
 
@@ -194,10 +214,18 @@ impl<'a> CommandContext<'a> {
             tool_registry: None,
             session_permissions: Vec::new(),
             mcp_summaries: Vec::new(),
+
             browser_status: None,
             browser_manager: None,
+            active_session: None,
             raw_input: String::new(),
         }
+    }
+
+    /// Sets the active session reference on the command context.
+    pub fn with_active_session(mut self, session: Option<&'a SessionRecord>) -> Self {
+        self.active_session = session;
+        self
     }
 
     /// Sets the raw command input string.
@@ -886,6 +914,126 @@ impl Command for BrowserCommand {
     }
 }
 
+/// Command: `/export`
+pub struct ExportCommand;
+
+impl Command for ExportCommand {
+    fn name(&self) -> &'static str {
+        "/export"
+    }
+
+    fn aliases(&self) -> &'static [&'static str] {
+        &["/save-as"]
+    }
+
+    fn description(&self) -> &'static str {
+        "Export conversation transcript to Markdown or JSON (/export [format] [filepath])"
+    }
+
+    fn execute(&self, context: &mut CommandContext) -> Result<CommandOutput, CommandError> {
+        let session = context.active_session.ok_or_else(|| {
+            CommandError::ExecutionFailed("No active conversation session to export".to_string())
+        })?;
+
+        let tokens: Vec<&str> = context.raw_input.split_whitespace().collect();
+
+        let mut format = ExportFormat::Markdown;
+        let mut target_path: Option<PathBuf> = None;
+
+        if tokens.len() > 1 {
+            for &token in &tokens[1..] {
+                match token.to_lowercase().as_str() {
+                    "md" | "markdown" => format = ExportFormat::Markdown,
+                    "json" => format = ExportFormat::Json,
+                    other => {
+                        let path = PathBuf::from(other);
+                        if let Some(ext) = path.extension().and_then(|e| e.to_str()) {
+                            if ext.eq_ignore_ascii_case("json") {
+                                format = ExportFormat::Json;
+                            } else if ext.eq_ignore_ascii_case("md")
+                                || ext.eq_ignore_ascii_case("markdown")
+                            {
+                                format = ExportFormat::Markdown;
+                            }
+                        }
+                        target_path = Some(path);
+                    }
+                }
+            }
+        }
+
+        let final_path = target_path.unwrap_or_else(|| {
+            let ext = match format {
+                ExportFormat::Markdown => "md",
+                ExportFormat::Json => "json",
+            };
+            let safe_title: String = session
+                .metadata
+                .title
+                .chars()
+                .map(|c| if c.is_alphanumeric() { c } else { '_' })
+                .collect();
+            let timestamp = chrono::Utc::now().format("%Y%m%d_%H%M%S");
+            PathBuf::from(format!("hades_export_{safe_title}_{timestamp}.{ext}"))
+        });
+
+        let saved = SessionExporter::save_export(session, format, &final_path).map_err(|e| {
+            CommandError::ExecutionFailed(format!(
+                "Failed to export session to '{}': {e}",
+                final_path.display()
+            ))
+        })?;
+
+        Ok(CommandOutput::ExportSuccess(saved))
+    }
+}
+
+/// Command: `/import`
+pub struct ImportCommand;
+
+impl Command for ImportCommand {
+    fn name(&self) -> &'static str {
+        "/import"
+    }
+
+    fn aliases(&self) -> &'static [&'static str] {
+        &["/load-session"]
+    }
+
+    fn description(&self) -> &'static str {
+        "Import conversation transcript from Hades, ChatGPT, Claude, or Markdown (/import <filepath>)"
+    }
+
+    fn execute(&self, context: &mut CommandContext) -> Result<CommandOutput, CommandError> {
+        let tokens: Vec<&str> = context.raw_input.split_whitespace().collect();
+
+        if tokens.len() < 2 {
+            return Ok(CommandOutput::Text(
+                "Usage: /import <filepath>\nSupported formats:\n  - Hades JSON (*.json)\n  - OpenAI ChatGPT export (conversations.json)\n  - Anthropic Claude transcript (*.json)\n  - Markdown transcript (*.md)".to_string(),
+            ));
+        }
+
+        let filepath_str = tokens[1..].join(" ");
+        let path = Path::new(&filepath_str);
+
+        if !path.exists() {
+            return Err(CommandError::ExecutionFailed(format!(
+                "Import file not found: {}",
+                path.display()
+            )));
+        }
+
+        let session = SessionImporter::import_from_file(path).map_err(|e| {
+            CommandError::ExecutionFailed(format!(
+                "Failed to parse and import session from '{}': {e}",
+                path.display()
+            ))
+        })?;
+
+        Ok(CommandOutput::ImportSuccess(Box::new(session)))
+    }
+}
+
 /// Extensible command registry storing and dispatching commands.
 #[derive(Default)]
 pub struct CommandRegistry {
@@ -902,7 +1050,7 @@ impl CommandRegistry {
         }
     }
 
-    /// Creates a registry pre-populated with standard default commands (`/help`, `/status`, `/model`, `/switch`, `/new`, `/sessions`, `/tools`, `/workspace`, `/permissions`, `/mcp`, `/agents`, `/browser`, `/exit`).
+    /// Creates a registry pre-populated with standard default commands (`/help`, `/status`, `/model`, `/switch`, `/new`, `/sessions`, `/tools`, `/workspace`, `/permissions`, `/mcp`, `/agents`, `/browser`, `/export`, `/import`, `/exit`).
     pub fn with_defaults() -> Self {
         let mut registry = Self::new();
         registry.register(HelpCommand);
@@ -917,6 +1065,8 @@ impl CommandRegistry {
         registry.register(McpCommand);
         registry.register(AgentsCommand);
         registry.register(BrowserCommand);
+        registry.register(ExportCommand);
+        registry.register(ImportCommand);
         registry.register(ExitCommand);
         registry
     }

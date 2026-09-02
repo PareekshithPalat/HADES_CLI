@@ -1,5 +1,5 @@
 use ratatui::{
-    style::{Color, Style, Modifier},
+    style::{Color, Modifier, Style},
     text::{Line, Span, Text},
 };
 
@@ -29,9 +29,9 @@ impl HadesTheme {
     pub const RATATUI_CYAN: Color = Color::Rgb(0, 200, 255);
 
     // Gradient endpoints for the wordmark: deep fire-red -> orange -> gold
-    const GRAD_START: (u8, u8, u8) = (255, 40, 0);   // fire red
-    const GRAD_MID: (u8, u8, u8) = (255, 110, 0);    // orange
-    const GRAD_END: (u8, u8, u8) = (255, 200, 0);    // gold
+    const GRAD_START: (u8, u8, u8) = (255, 40, 0); // fire red
+    const GRAD_MID: (u8, u8, u8) = (255, 110, 0); // orange
+    const GRAD_END: (u8, u8, u8) = (255, 200, 0); // gold
 
     // Unicode & ASCII Branding
     pub const TRIDENT: &'static str = "🔱";
@@ -56,9 +56,7 @@ impl HadesTheme {
         } else {
             (Self::GRAD_MID, Self::GRAD_END, (t - 0.5) / 0.5)
         };
-        let lerp = |x: u8, y: u8| -> u8 {
-            (x as f32 + (y as f32 - x as f32) * frac).round() as u8
-        };
+        let lerp = |x: u8, y: u8| -> u8 { (x as f32 + (y as f32 - x as f32) * frac).round() as u8 };
         Color::Rgb(lerp(a.0, b.0), lerp(a.1, b.1), lerp(a.2, b.2))
     }
 

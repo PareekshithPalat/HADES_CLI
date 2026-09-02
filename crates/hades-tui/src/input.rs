@@ -151,6 +151,31 @@ impl InputHandler {
                             CommandOutput::OpenSessionPicker => {
                                 Ok(KeyActionResult::OpenSessionPicker)
                             }
+                            CommandOutput::ExportSuccess(path) => {
+                                tui_state.show_toast(format!(
+                                    "Successfully exported to {}",
+                                    path.display()
+                                ));
+                                tui_state.set_output(CommandOutput::Text(format!(
+                                    "✓ Successfully exported session to {}",
+                                    path.display()
+                                )));
+                                Ok(KeyActionResult::Handled)
+                            }
+                            CommandOutput::ImportSuccess(record) => {
+                                tui_state.reconstruct_turns_from_session(&record);
+                                tui_state.show_toast(format!(
+                                    "Successfully imported: {}",
+                                    record.metadata.title
+                                ));
+                                tui_state.set_output(CommandOutput::Text(format!(
+                                    "✓ Successfully imported session '{}' ({} messages)",
+                                    record.metadata.title,
+                                    record.messages.len()
+                                )));
+                                tui_state.scroll_to_bottom();
+                                Ok(KeyActionResult::Handled)
+                            }
                             _ => {
                                 tui_state.set_output(output);
                                 Ok(KeyActionResult::Handled)
@@ -360,6 +385,31 @@ impl InputHandler {
                             CommandOutput::NewSession => Ok(KeyActionResult::NewSession),
                             CommandOutput::OpenSessionPicker => {
                                 Ok(KeyActionResult::OpenSessionPicker)
+                            }
+                            CommandOutput::ExportSuccess(path) => {
+                                tui_state.show_toast(format!(
+                                    "Successfully exported to {}",
+                                    path.display()
+                                ));
+                                tui_state.set_output(CommandOutput::Text(format!(
+                                    "✓ Successfully exported session to {}",
+                                    path.display()
+                                )));
+                                Ok(KeyActionResult::Handled)
+                            }
+                            CommandOutput::ImportSuccess(record) => {
+                                tui_state.reconstruct_turns_from_session(&record);
+                                tui_state.show_toast(format!(
+                                    "Successfully imported: {}",
+                                    record.metadata.title
+                                ));
+                                tui_state.set_output(CommandOutput::Text(format!(
+                                    "✓ Successfully imported session '{}' ({} messages)",
+                                    record.metadata.title,
+                                    record.messages.len()
+                                )));
+                                tui_state.scroll_to_bottom();
+                                Ok(KeyActionResult::Handled)
                             }
                             CommandOutput::Exit => Ok(KeyActionResult::Quit),
                             _ => {

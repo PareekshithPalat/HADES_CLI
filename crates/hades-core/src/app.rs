@@ -990,6 +990,41 @@ impl HadesApp {
         Ok(deleted)
     }
 
+    /// Imports an external conversation transcript from file into the repository and activates it.
+    pub async fn import_session_from_file(
+        &mut self,
+        path: &Path,
+    ) -> Result<SessionRecord, CoreError> {
+        let record = hades_storage::SessionImporter::import_from_file(path)?;
+        self.session_repository.save_session(&record).await?;
+        self.session_repository
+            .set_active_session_id(&record.metadata.id)
+            .await?;
+        let from_id = self.active_session.as_ref().map(|s| s.metadata.id.clone());
+        self.active_session = Some(record.clone());
+        self.event_bus.publish(HadesEvent::session_created(
+            &record.metadata.id,
+            &record.metadata.title,
+        ));
+        self.event_bus
+            .publish(HadesEvent::session_switched(from_id, &record.metadata.id));
+        info!(session_id = %record.metadata.id, title = %record.metadata.title, "Imported conversation session");
+        Ok(record)
+    }
+
+    /// Exports the currently active conversation session to the target path in the specified format.
+    pub fn export_active_session(
+        &self,
+        format: hades_storage::ExportFormat,
+        target_path: &Path,
+    ) -> Result<PathBuf, CoreError> {
+        let session = self.active_session.as_ref().ok_or_else(|| {
+            CoreError::Runtime("No active conversation session to export".to_string())
+        })?;
+        let saved = hades_storage::SessionExporter::save_export(session, format, target_path)?;
+        Ok(saved)
+    }
+
     /// Switches the active model for the CURRENT session without wiping messages or creating a new session.
     pub async fn switch_active_model_for_session(
         &mut self,
@@ -1618,6 +1653,7 @@ impl HadesApp {
         )
         .with_mcp_summaries(mcp_summaries)
         .with_browser(browser_status, Some(self.browser_manager.clone()))
+        .with_active_session(self.active_session.as_ref())
         .with_raw_input(input);
 
         let result = self.command_registry.execute(input, &mut context);
@@ -1641,10 +1677,20 @@ impl HadesApp {
                     self.transition_to(AppState::SessionSelect)?;
                 } else if context.shutdown_requested || matches!(output, CommandOutput::Exit) {
                     self.request_shutdown(Some("Command exit requested".to_string()))?;
+                } else if let CommandOutput::ImportSuccess(ref record) = output {
+                    let from_id = self.active_session.as_ref().map(|s| s.metadata.id.clone());
+                    self.active_session = Some((**record).clone());
+                    self.event_bus.publish(HadesEvent::session_created(
+                        &record.metadata.id,
+                        &record.metadata.title,
+                    ));
+                    self.event_bus
+                        .publish(HadesEvent::session_switched(from_id, &record.metadata.id));
                 }
 
                 Ok(output)
             }
+
             Err(e) => {
                 self.event_bus
                     .publish(HadesEvent::command_executed(input, false));
