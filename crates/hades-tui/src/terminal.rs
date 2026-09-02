@@ -4,7 +4,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 
 use crossterm::{
     cursor::Show,
-    event::{DisableMouseCapture, EnableMouseCapture},
+    event::DisableMouseCapture,
     execute,
     terminal::{disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen},
 };
@@ -40,12 +40,12 @@ pub fn restore_terminal() -> io::Result<()> {
     Ok(())
 }
 
-/// Initializes a full-screen Ratatui terminal in the alternate screen with mouse capture.
+/// Initializes a full-screen Ratatui terminal in the alternate screen.
 pub fn init_terminal() -> Result<Terminal<CrosstermBackend<Stdout>>, TuiError> {
     install_panic_hook();
     enable_raw_mode()?;
     let mut out = stdout();
-    execute!(out, EnterAlternateScreen, EnableMouseCapture)?;
+    execute!(out, EnterAlternateScreen)?;
     TERMINAL_INITIALIZED.store(true, Ordering::SeqCst);
     IN_ALTERNATE_SCREEN.store(true, Ordering::SeqCst);
 
@@ -53,7 +53,7 @@ pub fn init_terminal() -> Result<Terminal<CrosstermBackend<Stdout>>, TuiError> {
     let mut terminal = Terminal::new(backend)?;
     terminal.clear()?;
 
-    info!("Terminal initialized in full-screen alternate screen mode with mouse capture");
+    info!("Terminal initialized in full-screen alternate screen mode");
     Ok(terminal)
 }
 
