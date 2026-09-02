@@ -6,10 +6,11 @@ pub mod state;
 
 pub use app::{HadesApp, APP_VERSION};
 pub use command::{
-    Command, CommandContext, CommandInfo, CommandOutput, CommandRegistry, ExitCommand, HelpCommand,
-    HelpEntry, ModelCommand, NewSessionCommand, SessionsCommand, StatusCommand, StatusInfo,
-    SwitchCommand,
+    Command, CommandContext, CommandInfo, CommandOutput, CommandRegistry, ExitCommand,
+    ExportCommand, HelpCommand, HelpEntry, ImportCommand, ModelCommand, NewSessionCommand,
+    SessionsCommand, StatusCommand, StatusInfo, SwitchCommand,
 };
+
 pub use context::{ContextManager, ContextReport, TokenEstimator, UsageKind};
 pub use error::{CommandError, CoreError};
 pub use state::AppState;
@@ -263,6 +264,58 @@ mod tests {
         assert!(
             matches!(output_mcp, CommandOutput::Text(t) if t.contains("MODEL CONTEXT PROTOCOL"))
         );
+    }
+
+    #[tokio::test]
+    async fn test_export_and_import_commands() {
+        let (mut app, dir) = create_test_app();
+        app.init().expect("app init");
+        app.create_new_session(Some("Export Import Test".to_string()))
+            .await
+            .expect("create session");
+
+        if let Some(session) = app.active_session_mut() {
+            session.add_message(Message::user(&session.metadata.id, "Explain microservices"));
+            session.add_message(Message::assistant(
+                &session.metadata.id,
+                "Microservices divide applications into independent services.",
+                Some("groq".to_string()),
+                Some("llama-3.3-70b-versatile".to_string()),
+            ));
+        }
+
+        // Test export command to Markdown
+        let export_md_path = dir.path().join("exported.md");
+        let export_md_cmd = format!("/export md {}", export_md_path.display());
+        let output = app
+            .execute_command(&export_md_cmd)
+            .expect("execute /export md");
+        assert!(
+            matches!(output, CommandOutput::ExportSuccess(ref p) if p.ends_with("exported.md"))
+        );
+        assert!(export_md_path.exists());
+
+        // Test export command to JSON
+        let export_json_path = dir.path().join("exported.json");
+        let export_json_cmd = format!("/export json {}", export_json_path.display());
+        let output_json = app
+            .execute_command(&export_json_cmd)
+            .expect("execute /export json");
+        assert!(
+            matches!(output_json, CommandOutput::ExportSuccess(ref p) if p.ends_with("exported.json"))
+        );
+        assert!(export_json_path.exists());
+
+        // Test importing the exported Markdown file
+        let import_cmd = format!("/import {}", export_md_path.display());
+        let import_output = app.execute_command(&import_cmd).expect("execute /import");
+        assert!(matches!(import_output, CommandOutput::ImportSuccess(_)));
+
+        assert_eq!(
+            app.active_session().unwrap().metadata.title,
+            "Export Import Test"
+        );
+        assert_eq!(app.active_session().unwrap().messages.len(), 2);
     }
 
     #[tokio::test]

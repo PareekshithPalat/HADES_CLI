@@ -1,13 +1,19 @@
 pub mod error;
+pub mod export;
+pub mod import;
 pub mod model;
 pub mod repository;
 pub mod service;
 pub mod time;
 
 pub use error::StorageError;
+pub use export::{export_to_json, export_to_markdown, save_export, ExportFormat, SessionExporter};
+pub use import::{
+    detect_format, import_from_file, import_from_str, ImportSourceFormat, SessionImporter,
+};
 pub use model::{
-    generate_session_title, Message, MessageMetadata, MessageRole, SessionMetadata, SessionRecord,
-    StorageHealth, StorageStatus,
+    generate_session_title, Message, MessageMetadata, MessageRecord, MessageRole, SessionMetadata,
+    SessionRecord, StorageHealth, StorageStatus,
 };
 pub use repository::{FileSessionRepository, SessionRepository};
 pub use service::StorageService;

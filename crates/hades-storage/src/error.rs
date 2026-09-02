@@ -31,4 +31,12 @@ pub enum StorageError {
     /// Unable to determine home directory.
     #[error("Unable to determine default user storage directory")]
     HomeDirectoryNotFound,
+
+    /// Error encountered when importing session transcripts.
+    #[error("Failed to import session: {0}")]
+    ImportError(String),
+
+    /// Unsupported format encountered.
+    #[error("Unsupported export/import format: {0}")]
+    UnsupportedFormat(String),
 }
