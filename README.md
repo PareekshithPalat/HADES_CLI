@@ -158,6 +158,10 @@ hadey --session 3f9a1b2c-4d5e-6f7a-8b9c-0d1e2f3a4b5c
 # Launch with custom configuration and data paths
 hadey --config ~/.config/hades/custom.toml --data-dir ~/my_hades_storage
 
+# Clean up saved sessions with no messages (and optionally ones idle for 30+ days)
+hadey --prune
+hadey --prune-older-than 30
+
 # Launch as a background Model Context Protocol (MCP) server
 hadey mcp-server --workspace /path/to/project
 ```
@@ -175,6 +179,8 @@ Options:
   -c, --config <FILE>        Custom path to configuration file (default: ~/.hades/config.toml)
   -d, --data-dir <DIR>       Custom directory for persistent storage (default: ~/.hades/data)
   -l, --log-dir <DIR>        Custom directory for log files (default: ~/.hades/logs)
+      --prune                Delete saved sessions that have no messages, then exit (active session is kept)
+      --prune-older-than <DAYS>  Also delete sessions inactive for more than DAYS days (implies --prune)
   -s, --session <SESSION_ID> Resume an existing conversation session by ID
   -h, --help                 Print help
   -V, --version              Print version
@@ -243,7 +249,7 @@ Type `/` in the prompt input field to activate the command palette:
 | `/mcp` | None | Inspect configured Model Context Protocol (MCP) servers, tools, and diagnostics. |
 | `/permissions` | None | View security rules, permission scopes, and risk levels for active session. |
 | `/workspace` | None | View active workspace root directory path and detected project metadata. |
-| `/sessions` | None | Open session manager to view, rename, switch, or delete saved conversations. |
+| `/sessions` | `prune [days]` | Open session manager to view, rename, switch, or delete saved conversations. `/sessions prune` removes empty sessions; `/sessions prune 30` also removes sessions inactive for 30+ days. The current session is never removed. |
 | `/new` | None | Create a new isolated conversation session. |
 | `/switch` | None | Quick-switch to a recent conversation session. |
 | `/status` | None | View active model status, system health, context token usage, and storage stats. |

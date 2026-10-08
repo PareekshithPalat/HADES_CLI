@@ -24,6 +24,8 @@ pub use orchestration::{
 };
 pub use state::AppState;
 
+pub use command::format_prune_report;
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -52,6 +54,33 @@ mod tests {
             session_repo,
         );
         (app, dir)
+    }
+
+    #[tokio::test]
+    async fn test_prune_sessions_never_removes_current_session() {
+        let (mut app, _dir) = create_test_app();
+        app.init().expect("init");
+
+        let stale = app.create_new_session(None).await.expect("stale session");
+        let current = app.create_new_session(None).await.expect("current session");
+        // Point the persisted active pointer elsewhere to prove the in-memory session is protected.
+        app.session_repository()
+            .set_active_session_id("someone-else")
+            .await
+            .expect("set pointer");
+
+        let removed = app
+            .prune_sessions(hades_storage::PruneCriteria::empty_sessions())
+            .await
+            .expect("prune");
+
+        let removed_ids: Vec<String> = removed.into_iter().map(|m| m.id).collect();
+        assert!(removed_ids.contains(&stale.metadata.id));
+        assert!(!removed_ids.contains(&current.metadata.id));
+        assert_eq!(
+            app.active_session().map(|s| s.metadata.id.clone()),
+            Some(current.metadata.id.clone())
+        );
     }
 
     #[test]

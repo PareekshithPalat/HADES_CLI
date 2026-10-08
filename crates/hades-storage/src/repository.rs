@@ -7,6 +7,36 @@ use uuid::Uuid;
 use crate::error::StorageError;
 use crate::model::{SessionMetadata, SessionRecord};
 
+/// Selects which sessions [`SessionRepository::prune_sessions`] removes.
+///
+/// A session is removed when it matches any enabled criterion.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct PruneCriteria {
+    /// Remove sessions that contain no messages.
+    pub empty: bool,
+    /// Remove sessions with no activity for more than this many days.
+    pub older_than_days: Option<u32>,
+}
+
+impl PruneCriteria {
+    /// Criteria matching only sessions with zero messages.
+    pub fn empty_sessions() -> Self {
+        Self {
+            empty: true,
+            older_than_days: None,
+        }
+    }
+
+    /// Returns whether `session` should be pruned at time `now`.
+    pub fn matches(&self, session: &SessionMetadata, now: chrono::DateTime<chrono::Utc>) -> bool {
+        let is_empty = self.empty && session.message_count == 0;
+        let is_stale = self.older_than_days.is_some_and(|days| {
+            now.signed_duration_since(session.updated_at) > chrono::Duration::days(days.into())
+        });
+        is_empty || is_stale
+    }
+}
+
 /// Abstract repository interface for persistent session management.
 #[async_trait]
 pub trait SessionRepository: Send + Sync {
@@ -38,6 +68,44 @@ pub trait SessionRepository: Send + Sync {
 
     /// Sets the ID of the active session.
     async fn set_active_session_id(&self, session_id: &str) -> Result<(), StorageError>;
+
+    /// Deletes every session matching `criteria` and returns the metadata of removed sessions.
+    ///
+    /// The session referenced by the active-session pointer and `keep_session_id` (the
+    /// in-memory session of the caller) are never deleted.
+    async fn prune_sessions(
+        &self,
+        criteria: PruneCriteria,
+        keep_session_id: Option<&str>,
+    ) -> Result<Vec<SessionMetadata>, StorageError> {
+        let active_id = self.get_active_session_id().await?;
+        let now = chrono::Utc::now();
+        let mut removed = Vec::new();
+
+        for session in self.list_sessions().await? {
+            let id = session.id.as_str();
+            if Some(id) == keep_session_id || Some(id) == active_id.as_deref() {
+                continue;
+            }
+            if criteria.matches(&session, now) && self.delete_session(id).await? {
+                removed.push(session);
+            }
+        }
+
+        info!(removed = removed.len(), ?criteria, "Pruned sessions");
+        Ok(removed)
+    }
+
+    /// Deletes all sessions with zero messages, except the active one. Returns how many were removed.
+    async fn prune_empty_sessions(
+        &self,
+        keep_session_id: Option<&str>,
+    ) -> Result<usize, StorageError> {
+        let removed = self
+            .prune_sessions(PruneCriteria::empty_sessions(), keep_session_id)
+            .await?;
+        Ok(removed.len())
+    }
 }
 
 /// Filesystem-backed persistent session repository with atomic writes and schema versioning.
@@ -272,5 +340,108 @@ impl SessionRepository for FileSessionRepository {
         self.atomic_write(&path, session_id)?;
         debug!(session_id = %session_id, "Updated active session pointer");
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::model::Message;
+    use tempfile::tempdir;
+
+    async fn session_with_messages(repo: &FileSessionRepository, count: usize) -> SessionRecord {
+        let mut record = repo.create_session(None, None, None).await.unwrap();
+        for i in 0..count {
+            record.add_message(Message::user(&record.metadata.id, format!("message {i}")));
+        }
+        repo.save_session(&record).await.unwrap();
+        record
+    }
+
+    #[test]
+    fn test_prune_criteria_matching() {
+        let now = chrono::Utc::now();
+        let mut meta = SessionMetadata::new("id", "title", None, None);
+        meta.updated_at = now - chrono::Duration::days(10);
+
+        assert!(PruneCriteria::empty_sessions().matches(&meta, now));
+        assert!(!PruneCriteria::default().matches(&meta, now));
+
+        meta.message_count = 3;
+        assert!(!PruneCriteria::empty_sessions().matches(&meta, now));
+        let stale = PruneCriteria {
+            empty: false,
+            older_than_days: Some(7),
+        };
+        assert!(stale.matches(&meta, now));
+        let fresh = PruneCriteria {
+            empty: false,
+            older_than_days: Some(30),
+        };
+        assert!(!fresh.matches(&meta, now));
+    }
+
+    #[tokio::test]
+    async fn test_prune_empty_sessions_keeps_active_and_non_empty() {
+        let dir = tempdir().unwrap();
+        let repo = FileSessionRepository::with_dir(dir.path());
+
+        let empty_a = session_with_messages(&repo, 0).await;
+        let empty_b = session_with_messages(&repo, 0).await;
+        let used = session_with_messages(&repo, 2).await;
+        let active_empty = session_with_messages(&repo, 0).await; // most recent -> active pointer
+
+        let removed = repo.prune_empty_sessions(None).await.unwrap();
+
+        assert_eq!(removed, 2);
+        let remaining: Vec<String> = repo
+            .list_sessions()
+            .await
+            .unwrap()
+            .into_iter()
+            .map(|m| m.id)
+            .collect();
+        assert!(!remaining.contains(&empty_a.metadata.id));
+        assert!(!remaining.contains(&empty_b.metadata.id));
+        assert!(remaining.contains(&used.metadata.id));
+        assert!(remaining.contains(&active_empty.metadata.id));
+        assert_eq!(
+            repo.get_active_session_id().await.unwrap().as_deref(),
+            Some(active_empty.metadata.id.as_str())
+        );
+    }
+
+    #[tokio::test]
+    async fn test_prune_sessions_respects_keep_and_age() {
+        let dir = tempdir().unwrap();
+        let repo = FileSessionRepository::with_dir(dir.path());
+
+        let kept_empty = session_with_messages(&repo, 0).await;
+        let mut old = session_with_messages(&repo, 1).await;
+        old.metadata.updated_at = chrono::Utc::now() - chrono::Duration::days(90);
+        repo.save_session(&old).await.unwrap();
+        let recent = session_with_messages(&repo, 1).await;
+
+        let criteria = PruneCriteria {
+            empty: true,
+            older_than_days: Some(30),
+        };
+        let removed = repo
+            .prune_sessions(criteria, Some(&kept_empty.metadata.id))
+            .await
+            .unwrap();
+
+        let removed_ids: Vec<&str> = removed.iter().map(|m| m.id.as_str()).collect();
+        assert_eq!(removed_ids, vec![old.metadata.id.as_str()]);
+        assert!(repo
+            .get_session(&kept_empty.metadata.id)
+            .await
+            .unwrap()
+            .is_some());
+        assert!(repo
+            .get_session(&recent.metadata.id)
+            .await
+            .unwrap()
+            .is_some());
     }
 }

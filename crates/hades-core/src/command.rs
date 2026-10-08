@@ -10,7 +10,8 @@ use hades_config::HadesConfig;
 use std::path::{Path, PathBuf};
 
 use hades_storage::{
-    ExportFormat, SessionExporter, SessionImporter, SessionRecord, StorageHealth, StorageStatus,
+    ExportFormat, SessionExporter, SessionImporter, SessionMetadata, SessionRecord, StorageHealth,
+    StorageStatus,
 };
 
 /// Information entry for help listings.
@@ -91,6 +92,9 @@ pub enum CommandOutput {
     /// Test connection to an MCP server.
     TestMcpServer(String),
 
+    /// Prune empty sessions, plus sessions inactive for more than `older_than_days` if set.
+    PruneSessions { older_than_days: Option<u32> },
+
     /// Application exit signal.
     Exit,
 }
@@ -150,6 +154,7 @@ impl fmt::Display for CommandOutput {
             Self::OpenMcpSetup => write!(f, "Opening MCP server configuration..."),
             Self::RemoveMcpServer(name) => write!(f, "Removing MCP server '{}'...", name),
             Self::TestMcpServer(name) => write!(f, "Testing MCP server '{}'...", name),
+            Self::PruneSessions { .. } => write!(f, "Pruning sessions..."),
             Self::Exit => write!(f, "Exiting Hades..."),
         }
     }
@@ -629,13 +634,57 @@ impl Command for SessionsCommand {
     }
 
     fn description(&self) -> &'static str {
-        "List and switch conversation sessions"
+        "List and switch sessions (`/sessions prune [days]` removes empty or stale sessions)"
     }
 
     fn execute(&self, context: &mut CommandContext) -> Result<CommandOutput, CommandError> {
+        let tokens: Vec<&str> = context.raw_input.split_whitespace().collect();
+        if tokens
+            .get(1)
+            .is_some_and(|t| t.eq_ignore_ascii_case("prune"))
+        {
+            return match tokens.get(2) {
+                None => Ok(CommandOutput::PruneSessions {
+                    older_than_days: None,
+                }),
+                Some(days) => match days.parse::<u32>() {
+                    Ok(days) if days > 0 => Ok(CommandOutput::PruneSessions {
+                        older_than_days: Some(days),
+                    }),
+                    _ => Ok(CommandOutput::Text(
+                        "Usage: /sessions prune [days]\n  /sessions prune      remove sessions with no messages\n  /sessions prune 30   also remove sessions inactive for more than 30 days".to_string(),
+                    )),
+                },
+            };
+        }
+
         context.request_session_picker();
         Ok(CommandOutput::OpenSessionPicker)
     }
+}
+
+/// Formats a human-readable summary of a session prune operation.
+pub fn format_prune_report(removed: &[SessionMetadata], older_than_days: Option<u32>) -> String {
+    let scope = match older_than_days {
+        Some(days) => format!("empty sessions and sessions inactive for more than {days} days"),
+        None => "empty sessions".to_string(),
+    };
+    if removed.is_empty() {
+        return format!("No sessions to prune ({scope}).");
+    }
+    let mut report = format!(
+        "Pruned {} session(s) ({scope}):
+",
+        removed.len()
+    );
+    for session in removed {
+        report.push_str(&format!(
+            "  {}  {}  ({} messages)
+",
+            session.id, session.title, session.message_count
+        ));
+    }
+    report
 }
 
 /// Command: `/tools`
@@ -1796,6 +1845,70 @@ impl CommandRegistry {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn run_sessions_command(raw: &str) -> CommandOutput {
+        let config = HadesConfig::default();
+        let health = StorageHealth {
+            status: StorageStatus::Ready,
+            root_dir: PathBuf::from("."),
+            writable: true,
+        };
+        let mut context = CommandContext::new(
+            AppState::Running,
+            &config,
+            &health,
+            Some("session-1"),
+            None,
+            0,
+            None,
+            None,
+            "0.0.0",
+            Vec::new(),
+        )
+        .with_raw_input(raw);
+        SessionsCommand
+            .execute(&mut context)
+            .expect("execute /sessions")
+    }
+
+    #[test]
+    fn test_sessions_prune_subcommand_parsing() {
+        assert_eq!(
+            run_sessions_command("/sessions"),
+            CommandOutput::OpenSessionPicker
+        );
+        assert_eq!(
+            run_sessions_command("/sessions prune"),
+            CommandOutput::PruneSessions {
+                older_than_days: None
+            }
+        );
+        assert_eq!(
+            run_sessions_command("/history PRUNE 30"),
+            CommandOutput::PruneSessions {
+                older_than_days: Some(30)
+            }
+        );
+        for invalid in ["/sessions prune 0", "/sessions prune soon"] {
+            match run_sessions_command(invalid) {
+                CommandOutput::Text(usage) => assert!(usage.contains("Usage: /sessions prune")),
+                other => panic!("expected usage text for {invalid}, got {other:?}"),
+            }
+        }
+    }
+
+    #[test]
+    fn test_format_prune_report() {
+        assert_eq!(
+            format_prune_report(&[], None),
+            "No sessions to prune (empty sessions)."
+        );
+        let meta = SessionMetadata::new("abc", "Old chat", None, None);
+        let report = format_prune_report(&[meta], Some(30));
+        assert!(report.starts_with("Pruned 1 session(s)"));
+        assert!(report.contains("inactive for more than 30 days"));
+        assert!(report.contains("abc  Old chat"));
+    }
 
     #[test]
     fn test_filter_palette_all_commands_on_empty_and_slash() {

@@ -1,5 +1,6 @@
 mod cli;
 mod logging;
+mod prune;
 
 use clap::Parser;
 use tracing::{error, info};
@@ -8,7 +9,7 @@ use cli::CliArgs;
 use hades_config::ConfigService;
 use hades_core::HadesApp;
 use hades_events::EventBus;
-use hades_storage::StorageService;
+use hades_storage::{FileSessionRepository, StorageService};
 use hades_tui::TuiRunner;
 
 #[tokio::main]
@@ -35,6 +36,23 @@ async fn main() {
         if let Err(e) = server.run_stdio().await {
             error!(error = %e, "Hades MCP server terminated with error");
             eprintln!("MCP Server error: {}", e);
+            std::process::exit(1);
+        }
+        return;
+    }
+
+    // Session maintenance mode (`--prune`): runs without initializing the full runtime
+    if let Some(criteria) = prune::criteria_from_args(args.prune, args.prune_older_than) {
+        let repository = match FileSessionRepository::new() {
+            Ok(repo) => repo,
+            Err(e) => {
+                eprintln!("Error resolving session storage: {}", e);
+                std::process::exit(1);
+            }
+        };
+        if let Err(e) = prune::run(&repository, criteria, &mut std::io::stdout()).await {
+            error!(error = %e, "Session prune failed");
+            eprintln!("Error pruning sessions: {}", e);
             std::process::exit(1);
         }
         return;
