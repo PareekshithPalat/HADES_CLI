@@ -36,6 +36,9 @@ pub enum ProviderError {
     #[error("Streaming error from provider '{provider}': {message}")]
     StreamError { provider: String, message: String },
 
+    #[error("Request to provider '{provider}' timed out: {message}")]
+    Timeout { provider: String, message: String },
+
     #[error("Failed to parse response payload from provider '{provider}': {message}")]
     Serialization { provider: String, message: String },
 

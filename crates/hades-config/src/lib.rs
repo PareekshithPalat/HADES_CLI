@@ -5,7 +5,7 @@ pub mod service;
 pub use error::ConfigError;
 pub use model::{
     ActiveModelConfig, BrowserConfig, GeneralConfig, HadesConfig, McpConfig, McpServerConfig,
-    McpTransportType, NotificationConfig, UiConfig, CURRENT_CONFIG_VERSION,
+    McpTransportType, NotificationConfig, ProviderConfig, UiConfig, CURRENT_CONFIG_VERSION,
 };
 pub use service::ConfigService;
 
@@ -127,6 +127,39 @@ mod tests {
     fn test_invalid_model_config() {
         let config = HadesConfig {
             model: Some(ActiveModelConfig::new("  ", "gpt-4o")),
+            ..Default::default()
+        };
+        assert!(config.validate().is_err());
+    }
+
+    #[test]
+    fn test_provider_config_defaults_disable_local_total_timeout() {
+        let provider = ProviderConfig::default();
+        assert_eq!(provider.connect_timeout_secs, 10);
+        assert_eq!(provider.local_request_timeout_secs, 0);
+        assert!(provider.local_stream_idle_timeout_secs > 60);
+        assert!(provider.cloud_stream_idle_timeout_secs > 0);
+        assert!(provider.validate().is_ok());
+    }
+
+    #[test]
+    fn test_provider_config_parses_partial_section() {
+        let toml_str = r#"
+            [provider]
+            local_stream_idle_timeout_secs = 1800
+        "#;
+        let config: HadesConfig = toml::from_str(toml_str).expect("parse config");
+        assert_eq!(config.provider.local_stream_idle_timeout_secs, 1800);
+        assert_eq!(config.provider.connect_timeout_secs, 10);
+    }
+
+    #[test]
+    fn test_provider_config_rejects_zero_connect_timeout() {
+        let config = HadesConfig {
+            provider: ProviderConfig {
+                connect_timeout_secs: 0,
+                ..Default::default()
+            },
             ..Default::default()
         };
         assert!(config.validate().is_err());

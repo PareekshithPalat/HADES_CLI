@@ -7,6 +7,7 @@ pub mod model;
 pub mod provider;
 pub mod request;
 pub mod stream;
+pub mod timeout;
 
 pub use adapters::OpenAiProvider;
 pub use capability::{Capability, CapabilityState, ModelCapabilities};
@@ -22,6 +23,7 @@ pub use request::{
     ProviderToolCall, ToolCallFunction, ToolDefinitionPayload, ToolFunctionDefinition, Usage,
 };
 pub use stream::{StreamEvent, StreamResult};
+pub use timeout::ProviderTimeouts;
 
 #[cfg(test)]
 mod tests {

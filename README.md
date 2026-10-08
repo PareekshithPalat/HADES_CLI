@@ -190,6 +190,7 @@ Open the interactive model picker inside HADES by typing `/model` in the prompt:
 1. Install and start Ollama (`ollama serve` or system daemon).
 2. Pull your preferred models: `ollama pull llama3.2` or `ollama pull deepseek-r1:7b`.
 3. Select `/model` -> **Ollama** in HADES. All local models appear automatically.
+4. Long local generations are never cut off while tokens are flowing. If a large model takes more than 10 minutes to load or emit its first token, raise `local_stream_idle_timeout_secs` under `[provider]` in `config.toml`.
 
 ### 2. OpenAI
 1. Obtain an API key from [platform.openai.com](https://platform.openai.com).
@@ -335,6 +336,14 @@ show_status_bar = true
 [model]
 provider_id = "groq"
 model_id = "llama-3.3-70b-versatile"
+
+# Provider Network Timeouts (seconds, 0 disables a timeout)
+[provider]
+connect_timeout_secs = 10              # Fast detection of offline/unreachable servers
+cloud_request_timeout_secs = 300       # Total limit for non-streaming cloud requests
+cloud_stream_idle_timeout_secs = 120   # Max silence between streamed chunks (cloud)
+local_request_timeout_secs = 0         # Disabled: slow local inference is never cut off
+local_stream_idle_timeout_secs = 600   # Max silence between chunks, incl. model load (Ollama)
 
 # Browser Sidecar & Web Settings
 [browser]

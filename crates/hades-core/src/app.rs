@@ -36,6 +36,24 @@ pub struct PendingApproval {
     pub agent_name: Option<String>,
 }
 
+/// Registers the built-in OpenAI-compatible provider suite using the configured network timeouts.
+///
+/// Re-registering replaces existing providers with the same id, so this is safe to call again
+/// once the user configuration has been loaded.
+fn register_builtin_providers(
+    model_manager: &mut ModelManager,
+    provider_config: &hades_config::ProviderConfig,
+) {
+    for provider in [
+        OpenAiProvider::openai(),
+        OpenAiProvider::groq(),
+        OpenAiProvider::ollama(),
+        OpenAiProvider::custom(),
+    ] {
+        model_manager.register_provider(Arc::new(provider.configured(provider_config)));
+    }
+}
+
 /// Central core runtime managing application lifecycle, sessions, context, providers, and subsystems.
 pub struct HadesApp {
     state: AppState,
@@ -70,12 +88,7 @@ impl HadesApp {
         event_bus: EventBus,
     ) -> Self {
         let mut model_manager = ModelManager::new();
-
-        // Register Phase 1 OpenAI-compatible provider suite
-        model_manager.register_provider(Arc::new(OpenAiProvider::openai()));
-        model_manager.register_provider(Arc::new(OpenAiProvider::groq()));
-        model_manager.register_provider(Arc::new(OpenAiProvider::ollama()));
-        model_manager.register_provider(Arc::new(OpenAiProvider::custom()));
+        register_builtin_providers(&mut model_manager, &HadesConfig::default().provider);
 
         let credential_backend: Arc<dyn CredentialBackend> =
             match FileCredentialBackend::default_location() {
@@ -178,6 +191,7 @@ impl HadesApp {
         self.config = self.config_service.load_or_create()?;
         self.notification_service
             .update_config(self.config.notification.clone());
+        register_builtin_providers(&mut self.model_manager, &self.config.provider);
         self.event_bus
             .publish(HadesEvent::config_loaded(self.config_service.config_path()));
 
