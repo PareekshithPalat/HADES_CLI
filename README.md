@@ -341,6 +341,7 @@ HADES automatically initializes `~/.hades/config.toml` on first run:
 [general]
 app_name = "hadey"
 default_mode = "simple"
+theme = "fire"                 # TUI color palette: "fire" (default), "matrix", "cyan", "monochrome"
 
 # Terminal Interface Settings
 [ui]

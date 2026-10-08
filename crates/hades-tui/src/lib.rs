@@ -68,6 +68,63 @@ mod tests {
         (app, dir)
     }
 
+    /// Renders one frame of the TUI with `[general] theme = <theme>` and returns every
+    /// foreground/background color that was drawn.
+    fn rendered_colors_for_theme(theme: &str) -> Vec<ratatui::style::Color> {
+        let dir = tempdir().expect("create temp dir");
+        let config_path = dir.path().join("config.toml");
+        std::fs::write(&config_path, format!("[general]\ntheme = \"{theme}\"\n"))
+            .expect("write config");
+        let mut app = HadesApp::new(
+            hades_config::ConfigService::with_path(config_path),
+            hades_storage::StorageService::with_root(dir.path().join("data")),
+            hades_events::EventBus::new(),
+        );
+        app.init().expect("init app");
+        assert_eq!(app.config().general.theme, theme);
+
+        let mut state = TuiState::new();
+        state.providers = app.model_manager().list_providers();
+        let mut terminal =
+            ratatui::Terminal::new(ratatui::backend::TestBackend::new(120, 40)).expect("terminal");
+        terminal
+            .draw(|frame| ui::render(frame, &app, &mut state))
+            .expect("draw frame");
+
+        terminal
+            .backend()
+            .buffer()
+            .content
+            .iter()
+            .flat_map(|cell| [cell.fg, cell.bg])
+            .collect()
+    }
+
+    #[test]
+    fn test_configured_theme_drives_rendered_colors() {
+        let fire_only = [
+            HadesTheme::RATATUI_ORANGE,
+            HadesTheme::RATATUI_GOLD,
+            HadesTheme::RATATUI_FIRE,
+        ];
+
+        let matrix = rendered_colors_for_theme("matrix");
+        assert!(
+            matrix.contains(&HadesTheme::MATRIX.primary),
+            "matrix theme should render its green primary color"
+        );
+        assert!(
+            !matrix.iter().any(|c| fire_only.contains(c)),
+            "no fire colors may leak into the matrix theme"
+        );
+
+        let unknown = rendered_colors_for_theme("not-a-theme");
+        assert!(
+            unknown.contains(&HadesTheme::FIRE.primary),
+            "unknown themes fall back to fire"
+        );
+    }
+
     #[test]
     fn test_sessions_prune_command_returns_prune_action() {
         let (mut app, _dir) = create_test_app();
