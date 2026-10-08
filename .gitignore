@@ -10,6 +10,7 @@
 *.pem
 *.key
 *.token
+.venv
 
 # Local Hades runtime and test artifacts
 .hades/
@@ -29,6 +30,7 @@ Thumbs.db
 
 # IDE, editor & tooling files
 .idea/
+.claude
 .vscode/
 *.sublime-project
 *.sublime-workspace
