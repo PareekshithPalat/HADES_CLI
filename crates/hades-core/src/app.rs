@@ -15,8 +15,8 @@ use hades_provider::{
     Model, ModelManager, OpenAiProvider, StreamResult, Usage,
 };
 use hades_storage::{
-    FileSessionRepository, Message, SessionMetadata, SessionRecord, SessionRepository,
-    StorageHealth, StorageService,
+    FileSessionRepository, Message, PruneCriteria, SessionMetadata, SessionRecord,
+    SessionRepository, StorageHealth, StorageService,
 };
 use hades_tools::{
     ApprovalDecision, DynTool, EvaluationResult, PermissionEngine, RiskLevel, ToolCall,
@@ -1151,6 +1151,20 @@ impl HadesApp {
         self.active_session = Some(record.clone());
         info!(session_id = %session_id, title = %record.metadata.title, "Switched active session");
         Ok(record)
+    }
+
+    /// Deletes sessions matching `criteria`. The current in-memory session and the persisted
+    /// active session are never removed. Returns the metadata of deleted sessions.
+    pub async fn prune_sessions(
+        &mut self,
+        criteria: PruneCriteria,
+    ) -> Result<Vec<SessionMetadata>, CoreError> {
+        let keep = self.active_session.as_ref().map(|s| s.metadata.id.clone());
+        let removed = self
+            .session_repository
+            .prune_sessions(criteria, keep.as_deref())
+            .await?;
+        Ok(removed)
     }
 
     /// Lists metadata for all stored conversation sessions.

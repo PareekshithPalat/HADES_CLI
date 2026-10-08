@@ -23,6 +23,14 @@ pub struct CliArgs {
     #[arg(short, long, value_name = "DIR")]
     pub log_dir: Option<PathBuf>,
 
+    /// Delete saved sessions that have no messages, then exit (the active session is kept)
+    #[arg(long)]
+    pub prune: bool,
+
+    /// With pruning, also delete sessions inactive for more than DAYS days (implies --prune)
+    #[arg(long, value_name = "DAYS", value_parser = clap::value_parser!(u32).range(1..))]
+    pub prune_older_than: Option<u32>,
+
     /// Explicitly resume a previous conversation session by ID
     #[arg(short, long, value_name = "SESSION_ID")]
     pub session: Option<String>,

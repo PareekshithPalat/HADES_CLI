@@ -69,6 +69,23 @@ mod tests {
     }
 
     #[test]
+    fn test_sessions_prune_command_returns_prune_action() {
+        let (mut app, _dir) = create_test_app();
+        let mut state = TuiState::new();
+        state.prompt_input = "/sessions prune 14".to_string();
+
+        let action = InputHandler::handle_key_event(make_key(KeyCode::Enter), &mut app, &mut state)
+            .expect("submit /sessions prune");
+
+        assert_eq!(
+            action,
+            KeyActionResult::PruneSessions {
+                older_than_days: Some(14)
+            }
+        );
+    }
+
+    #[test]
     fn test_slash_opens_command_palette() {
         let (mut app, _dir) = create_test_app();
         let mut state = TuiState::new();

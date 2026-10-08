@@ -56,6 +56,9 @@ pub enum KeyActionResult {
     /// User requested testing an MCP server.
     TestMcpServer(String),
 
+    /// User requested pruning empty (and optionally stale) sessions.
+    PruneSessions { older_than_days: Option<u32> },
+
     /// Application should initiate graceful shutdown and terminate.
     Quit,
 }
@@ -177,6 +180,9 @@ impl InputHandler {
                             }
                             CommandOutput::TestMcpServer(name) => {
                                 Ok(KeyActionResult::TestMcpServer(name))
+                            }
+                            CommandOutput::PruneSessions { older_than_days } => {
+                                Ok(KeyActionResult::PruneSessions { older_than_days })
                             }
                             CommandOutput::ExportSuccess(path) => {
                                 tui_state.show_toast(format!(
@@ -569,6 +575,9 @@ impl InputHandler {
                         }
                         CommandOutput::TestMcpServer(name) => {
                             Ok(KeyActionResult::TestMcpServer(name))
+                        }
+                        CommandOutput::PruneSessions { older_than_days } => {
+                            Ok(KeyActionResult::PruneSessions { older_than_days })
                         }
                         _ => {
                             tui_state.set_output(output);

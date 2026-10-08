@@ -12,8 +12,9 @@ use crate::input::{InputHandler, KeyActionResult};
 use crate::state::TuiState;
 use crate::terminal::{init_terminal, restore_terminal};
 use crate::ui;
-use hades_core::{AppState, CommandOutput, HadesApp};
+use hades_core::{format_prune_report, AppState, CommandOutput, HadesApp};
 use hades_provider::{Credential, Model, StreamEvent};
+use hades_storage::PruneCriteria;
 
 /// Runs the full-screen Ratatui UI event loop with application-owned scrollable conversation viewport.
 pub struct TuiRunner;
@@ -392,6 +393,24 @@ impl TuiRunner {
                                 KeyActionResult::TestMcpServer(name) => {
                                     match app.test_mcp_server(&name).await {
                                         Ok(result) => tui_state.set_output(CommandOutput::Text(result)),
+                                        Err(e) => tui_state.set_error(e.to_string()),
+                                    }
+                                }
+                                KeyActionResult::PruneSessions { older_than_days } => {
+                                    let criteria = PruneCriteria {
+                                        empty: true,
+                                        older_than_days,
+                                    };
+                                    match app.prune_sessions(criteria).await {
+                                        Ok(removed) => {
+                                            tui_state.show_toast(format!(
+                                                "Pruned {} session(s)",
+                                                removed.len()
+                                            ));
+                                            tui_state.set_output(CommandOutput::Text(
+                                                format_prune_report(&removed, older_than_days),
+                                            ));
+                                        }
                                         Err(e) => tui_state.set_error(e.to_string()),
                                     }
                                 }
