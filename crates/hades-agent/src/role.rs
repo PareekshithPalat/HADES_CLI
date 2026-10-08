@@ -154,6 +154,7 @@ impl AgentRole {
             Self::Researcher => vec![
                 "workspace.*",
                 "filesystem.read",
+                "filesystem.search",
                 "filesystem.list",
                 "system.runtime.*",
                 "web.*",
@@ -163,23 +164,40 @@ impl AgentRole {
                 "browser.get_links",
                 "browser.screenshot",
             ],
-            Self::Analyst => vec!["workspace.*", "filesystem.read", "filesystem.list"],
-            Self::Explorer => vec!["workspace.*", "filesystem.list", "filesystem.read"],
+            Self::Analyst => vec![
+                "workspace.*",
+                "filesystem.read",
+                "filesystem.search",
+                "filesystem.list",
+            ],
+            Self::Explorer => vec![
+                "workspace.*",
+                "filesystem.list",
+                "filesystem.read",
+                "filesystem.search",
+            ],
             Self::Implementer => vec![
                 "filesystem.*",
                 "workspace.*",
                 "shell.execute",
                 "environment.*",
             ],
-            Self::Reviewer => vec!["workspace.*", "filesystem.read", "filesystem.list"],
+            Self::Reviewer => vec![
+                "workspace.*",
+                "filesystem.read",
+                "filesystem.search",
+                "filesystem.list",
+            ],
             Self::Tester => vec![
                 "shell.execute",
                 "filesystem.read",
+                "filesystem.search",
                 "filesystem.list",
                 "system.runtime.*",
             ],
             Self::Debugger => vec![
                 "filesystem.read",
+                "filesystem.search",
                 "filesystem.list",
                 "shell.execute",
                 "system.process.*",
@@ -187,12 +205,18 @@ impl AgentRole {
             ],
             Self::SecurityReviewer => vec![
                 "filesystem.read",
+                "filesystem.search",
                 "filesystem.list",
                 "workspace.*",
                 "environment.list",
                 "system.network.*",
             ],
-            Self::FileInvestigator => vec!["filesystem.read", "filesystem.list", "workspace.*"],
+            Self::FileInvestigator => vec![
+                "filesystem.read",
+                "filesystem.search",
+                "filesystem.list",
+                "workspace.*",
+            ],
             Self::SystemInvestigator => vec!["system.*", "environment.*", "shell.execute"],
             Self::GeneralSpecialist => vec![
                 "filesystem.*",
@@ -212,7 +236,12 @@ impl AgentRole {
                 "browser.pdf",
             ],
             Self::WebTestingAgent => vec!["web.*", "browser.*"],
-            Self::Custom(_) => vec!["workspace.*", "filesystem.read", "filesystem.list"],
+            Self::Custom(_) => vec![
+                "workspace.*",
+                "filesystem.read",
+                "filesystem.search",
+                "filesystem.list",
+            ],
         }
     }
 
