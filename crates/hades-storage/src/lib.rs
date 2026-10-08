@@ -15,7 +15,7 @@ pub use model::{
     generate_session_title, Message, MessageMetadata, MessageRecord, MessageRole, SessionMetadata,
     SessionRecord, StorageHealth, StorageStatus,
 };
-pub use repository::{FileSessionRepository, SessionRepository};
+pub use repository::{FileSessionRepository, PruneCriteria, SessionRepository};
 pub use service::StorageService;
 pub use time::{format_session_timestamp, format_session_timestamp_at};
 
