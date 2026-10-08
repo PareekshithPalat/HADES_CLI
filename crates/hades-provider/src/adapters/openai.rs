@@ -15,22 +15,49 @@ use crate::model::Model;
 use crate::provider::{Provider, ProviderMetadata};
 use crate::request::{ChatMessage, CompletionRequest, CompletionResponse, FinishReason, Usage};
 use crate::stream::{StreamEvent, StreamResult};
+use crate::timeout::ProviderTimeouts;
 
 /// Adapter for OpenAI-compatible REST APIs (OpenAI, Groq, Ollama, DeepSeek, Local vLLM, LM Studio, etc.).
 #[derive(Debug, Clone)]
 pub struct OpenAiProvider {
     metadata: ProviderMetadata,
     client: Client,
+    timeouts: ProviderTimeouts,
 }
 
 impl OpenAiProvider {
-    /// Creates a new `OpenAiProvider` with custom metadata.
+    /// Creates a new `OpenAiProvider` with custom metadata and default timeouts.
     pub fn new(metadata: ProviderMetadata) -> Self {
+        let timeouts = ProviderTimeouts::defaults(metadata.is_local);
+        Self::with_timeouts(metadata, timeouts)
+    }
+
+    /// Creates a new `OpenAiProvider` with an explicit timeout policy.
+    ///
+    /// Only the connect timeout is set on the HTTP client. A client-wide total timeout
+    /// would also bound the time spent reading a streaming body and abort slow but
+    /// healthy generations, so request and stream timeouts are applied per call.
+    pub fn with_timeouts(metadata: ProviderMetadata, timeouts: ProviderTimeouts) -> Self {
         let client = Client::builder()
-            .timeout(Duration::from_secs(60))
+            .connect_timeout(timeouts.connect)
             .build()
             .unwrap_or_default();
-        Self { metadata, client }
+        Self {
+            metadata,
+            client,
+            timeouts,
+        }
+    }
+
+    /// Rebuilds this provider with timeouts resolved from the user's `[provider]` configuration.
+    pub fn configured(self, config: &hades_config::ProviderConfig) -> Self {
+        let timeouts = ProviderTimeouts::from_config(config, self.metadata.is_local);
+        Self::with_timeouts(self.metadata, timeouts)
+    }
+
+    /// Returns the timeout policy used by this provider.
+    pub fn timeouts(&self) -> &ProviderTimeouts {
+        &self.timeouts
     }
 
     /// Factory constructor for OpenAI standard cloud provider.
@@ -121,6 +148,36 @@ impl OpenAiProvider {
         }
 
         headers
+    }
+
+    /// Maps a failure to send a request (before any response arrives) to a descriptive error.
+    fn map_send_error(&self, base: &str, err: reqwest::Error) -> ProviderError {
+        let provider = self.id().to_string();
+        if err.is_timeout() {
+            return ProviderError::Timeout {
+                provider,
+                message: format!("no response from {base} within the configured timeout"),
+            };
+        }
+        if self.metadata.is_local {
+            return ProviderError::ServerUnavailable {
+                provider,
+                status_code: 503,
+                message: format!(
+                    "Unable to connect to Ollama server at {base}. Is Ollama running? Start it with 'ollama serve' and try again."
+                ),
+            };
+        }
+        if err.is_connect() {
+            return ProviderError::NetworkError {
+                provider,
+                message: format!("unable to connect to {base}: {err}"),
+            };
+        }
+        ProviderError::NetworkError {
+            provider,
+            message: err.to_string(),
+        }
     }
 
     fn parse_error_response(
@@ -329,24 +386,14 @@ impl Provider for OpenAiProvider {
         let headers = self.build_headers(credential);
 
         debug!(provider = %self.id(), url = %url, "Authenticating with provider");
-        let resp = match self.client.get(&url).headers(headers).send().await {
-            Ok(r) => r,
-            Err(e) => {
-                if self.metadata.is_local {
-                    return Err(ProviderError::ServerUnavailable {
-                        provider: self.id().to_string(),
-                        status_code: 503,
-                        message: format!(
-                            "Ollama is not running or cannot be reached at {base}. Start Ollama ('ollama serve') and try again."
-                        ),
-                    });
-                }
-                return Err(ProviderError::NetworkError {
-                    provider: self.id().to_string(),
-                    message: e.to_string(),
-                });
-            }
-        };
+        let resp = self
+            .client
+            .get(&url)
+            .headers(headers)
+            .timeout(self.timeouts.metadata)
+            .send()
+            .await
+            .map_err(|e| self.map_send_error(&base, e))?;
 
         let status = resp.status();
         if status.is_success() {
@@ -363,24 +410,14 @@ impl Provider for OpenAiProvider {
         let headers = self.build_headers(credential);
 
         debug!(provider = %self.id(), url = %url, "Discovering models from provider");
-        let resp = match self.client.get(&url).headers(headers).send().await {
-            Ok(r) => r,
-            Err(e) => {
-                if self.metadata.is_local {
-                    return Err(ProviderError::ServerUnavailable {
-                        provider: self.id().to_string(),
-                        status_code: 503,
-                        message: format!(
-                            "Ollama is not running or cannot be reached at {base}. Start Ollama ('ollama serve') and try again."
-                        ),
-                    });
-                }
-                return Err(ProviderError::NetworkError {
-                    provider: self.id().to_string(),
-                    message: e.to_string(),
-                });
-            }
-        };
+        let resp = self
+            .client
+            .get(&url)
+            .headers(headers)
+            .timeout(self.timeouts.metadata)
+            .send()
+            .await
+            .map_err(|e| self.map_send_error(&base, e))?;
 
         let status = resp.status();
         if !status.is_success() {
@@ -473,17 +510,14 @@ impl Provider for OpenAiProvider {
         };
 
         debug!(provider = %self.id(), model = %request.model, "Sending completion request");
-        let resp = self
-            .client
-            .post(&url)
-            .headers(headers)
-            .json(&payload)
+        let mut builder = self.client.post(&url).headers(headers).json(&payload);
+        if let Some(limit) = self.timeouts.request {
+            builder = builder.timeout(limit);
+        }
+        let resp = builder
             .send()
             .await
-            .map_err(|e| ProviderError::NetworkError {
-                provider: self.id().to_string(),
-                message: e.to_string(),
-            })?;
+            .map_err(|e| self.map_send_error(&base, e))?;
 
         let status = resp.status();
         if !status.is_success() {
@@ -491,13 +525,20 @@ impl Provider for OpenAiProvider {
             return Err(Self::parse_error_response(self.id(), status, &body));
         }
 
-        let chat_resp: OpenAiChatResponse =
-            resp.json()
-                .await
-                .map_err(|e| ProviderError::Serialization {
+        let chat_resp: OpenAiChatResponse = resp.json().await.map_err(|e| {
+            if e.is_timeout() {
+                ProviderError::Timeout {
+                    provider: self.id().to_string(),
+                    message: "response body was not received within the configured timeout"
+                        .to_string(),
+                }
+            } else {
+                ProviderError::Serialization {
                     provider: self.id().to_string(),
                     message: format!("Failed to parse chat response: {e}"),
-                })?;
+                }
+            }
+        })?;
 
         let choice = chat_resp.choices.into_iter().next();
         let message = choice.as_ref().and_then(|c| c.message.as_ref());
@@ -574,17 +615,33 @@ impl Provider for OpenAiProvider {
         };
 
         debug!(provider = %self.id(), model = %request.model, "Initiating streaming completion");
-        let resp = self
+        let idle_timeout = self.timeouts.stream_idle;
+        let idle_timeout_key = if self.metadata.is_local {
+            "provider.local_stream_idle_timeout_secs"
+        } else {
+            "provider.cloud_stream_idle_timeout_secs"
+        };
+        // No total timeout here: the response headers are bounded by the idle timeout and the
+        // body by a per-chunk idle timeout, so long generations survive while stalls do not.
+        let send = self
             .client
             .post(&url)
             .headers(headers)
             .json(&payload)
-            .send()
-            .await
-            .map_err(|e| ProviderError::NetworkError {
-                provider: self.id().to_string(),
-                message: e.to_string(),
-            })?;
+            .send();
+        let sent = match idle_timeout {
+            Some(limit) => tokio::time::timeout(limit, send).await.map_err(|_| {
+                ProviderError::Timeout {
+                    provider: self.id().to_string(),
+                    message: format!(
+                        "no response from {base} after {}s. Increase `{idle_timeout_key}` in config.toml if the model needs more time to load.",
+                        limit.as_secs()
+                    ),
+                }
+            })?,
+            None => send.await,
+        };
+        let resp = sent.map_err(|e| self.map_send_error(&base, e))?;
 
         let status = resp.status();
         if !status.is_success() {
@@ -600,6 +657,9 @@ impl Provider for OpenAiProvider {
             stream: S,
             buffer: String,
             provider_id: String,
+            is_local: bool,
+            idle_timeout: Option<Duration>,
+            idle_timeout_key: &'static str,
             sent_started: bool,
             finished: bool,
             accumulated_tool_calls: BTreeMap<usize, (Option<String>, Option<String>, String)>,
@@ -610,6 +670,9 @@ impl Provider for OpenAiProvider {
             stream: byte_stream,
             buffer: String::new(),
             provider_id,
+            is_local: self.metadata.is_local,
+            idle_timeout,
+            idle_timeout_key,
             sent_started: false,
             finished: false,
             accumulated_tool_calls: BTreeMap::new(),
@@ -762,8 +825,31 @@ impl Provider for OpenAiProvider {
                     continue;
                 }
 
-                // Need more bytes from network
-                match state.stream.next().await {
+                // Need more bytes from network. The idle timeout resets on every chunk, so a
+                // slow model that keeps producing tokens is never cut off.
+                let next = match state.idle_timeout {
+                    Some(limit) => match tokio::time::timeout(limit, state.stream.next()).await {
+                        Ok(next) => next,
+                        Err(_) => {
+                            state.finished = true;
+                            let message = format!(
+                                "no data received for {}s during token generation. Increase `{}` in config.toml if the model needs more time.",
+                                limit.as_secs(),
+                                state.idle_timeout_key
+                            );
+                            return Some((
+                                Err(ProviderError::Timeout {
+                                    provider: state.provider_id.clone(),
+                                    message,
+                                }),
+                                state,
+                            ));
+                        }
+                    },
+                    None => state.stream.next().await,
+                };
+
+                match next {
                     Some(Ok(bytes)) => {
                         if let Ok(text) = std::str::from_utf8(&bytes) {
                             state.buffer.push_str(text);
@@ -771,10 +857,15 @@ impl Provider for OpenAiProvider {
                     }
                     Some(Err(e)) => {
                         state.finished = true;
+                        let message = if state.is_local {
+                            format!("Ollama stream interrupted during token generation: {e}")
+                        } else {
+                            format!("stream interrupted during token generation: {e}")
+                        };
                         return Some((
                             Err(ProviderError::StreamError {
                                 provider: state.provider_id.clone(),
-                                message: e.to_string(),
+                                message,
                             }),
                             state,
                         ));
@@ -806,5 +897,243 @@ impl Provider for OpenAiProvider {
         });
 
         Ok(Box::pin(stream))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::time::Instant;
+    use tokio::io::{AsyncReadExt, AsyncWriteExt};
+    use tokio::net::{TcpListener, TcpStream};
+
+    /// What the fake server does after reading the request.
+    enum Script {
+        /// Stream SSE `data:` payloads as HTTP chunks, sleeping before each one.
+        Stream(Vec<(u64, String)>),
+        /// Send a partial chunk, then drop the connection mid-stream.
+        DropMidStream,
+        /// Read the request and never answer.
+        Hang,
+    }
+
+    async fn read_request(socket: &mut TcpStream) {
+        let mut buf = Vec::new();
+        let mut chunk = [0u8; 4096];
+        loop {
+            let n = socket.read(&mut chunk).await.unwrap_or(0);
+            if n == 0 {
+                return;
+            }
+            buf.extend_from_slice(&chunk[..n]);
+            let text = String::from_utf8_lossy(&buf);
+            if let Some(header_end) = text.find("\r\n\r\n") {
+                let content_length = text[..header_end]
+                    .lines()
+                    .find_map(|l| {
+                        let (k, v) = l.split_once(':')?;
+                        if k.eq_ignore_ascii_case("content-length") {
+                            v.trim().parse::<usize>().ok()
+                        } else {
+                            None
+                        }
+                    })
+                    .unwrap_or(0);
+                if buf.len() >= header_end + 4 + content_length {
+                    return;
+                }
+            }
+        }
+    }
+
+    async fn spawn_server(script: Script) -> String {
+        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        tokio::spawn(async move {
+            let (mut socket, _) = listener.accept().await.unwrap();
+            read_request(&mut socket).await;
+            let headers = "HTTP/1.1 200 OK\r\nContent-Type: text/event-stream\r\nTransfer-Encoding: chunked\r\n\r\n";
+            match script {
+                Script::Stream(events) => {
+                    socket.write_all(headers.as_bytes()).await.unwrap();
+                    for (delay_ms, data) in events {
+                        tokio::time::sleep(Duration::from_millis(delay_ms)).await;
+                        let payload = format!("data: {data}\n\n");
+                        let chunk = format!("{:x}\r\n{payload}\r\n", payload.len());
+                        if socket.write_all(chunk.as_bytes()).await.is_err() {
+                            return;
+                        }
+                    }
+                    let _ = socket.write_all(b"0\r\n\r\n").await;
+                }
+                Script::DropMidStream => {
+                    socket.write_all(headers.as_bytes()).await.unwrap();
+                    let payload = format!("data: {}\n\n", delta("Hi"));
+                    let chunk = format!("{:x}\r\n{payload}\r\n", payload.len());
+                    socket.write_all(chunk.as_bytes()).await.unwrap();
+                    // Announce a 0x100-byte chunk, send a few bytes of it, then hang up.
+                    socket.write_all(b"100\r\ndata: {").await.unwrap();
+                    socket.flush().await.unwrap();
+                    drop(socket);
+                }
+                Script::Hang => {
+                    tokio::time::sleep(Duration::from_secs(30)).await;
+                }
+            }
+        });
+        format!("http://{addr}/v1")
+    }
+
+    fn delta(text: &str) -> String {
+        serde_json::json!({ "choices": [{ "delta": { "content": text } }] }).to_string()
+    }
+
+    fn ollama_with(stream_idle_ms: Option<u64>, request_ms: Option<u64>) -> OpenAiProvider {
+        let metadata = OpenAiProvider::ollama().metadata().clone();
+        OpenAiProvider::with_timeouts(
+            metadata,
+            ProviderTimeouts {
+                connect: Duration::from_secs(5),
+                request: request_ms.map(Duration::from_millis),
+                stream_idle: stream_idle_ms.map(Duration::from_millis),
+                metadata: Duration::from_secs(5),
+            },
+        )
+    }
+
+    fn credential(endpoint: &str) -> Credential {
+        Credential::with_endpoint("ollama", endpoint, None)
+    }
+
+    async fn collect(provider: &OpenAiProvider, endpoint: &str) -> (String, Option<ProviderError>) {
+        let request = CompletionRequest::single_prompt("llama3", "hello");
+        let mut stream = match provider
+            .complete_stream(request, &credential(endpoint))
+            .await
+        {
+            Ok(s) => s,
+            Err(e) => return (String::new(), Some(e)),
+        };
+        let mut text = String::new();
+        while let Some(event) = stream.next().await {
+            match event {
+                Ok(StreamEvent::Delta(t)) => text.push_str(&t),
+                Ok(_) => {}
+                Err(e) => return (text, Some(e)),
+            }
+        }
+        (text, None)
+    }
+
+    #[test]
+    fn test_local_provider_has_no_total_timeout_by_default() {
+        let provider = OpenAiProvider::ollama();
+        assert_eq!(provider.timeouts().request, None);
+        assert!(provider.timeouts().stream_idle.unwrap() > Duration::from_secs(60));
+        assert!(provider.timeouts().connect <= Duration::from_secs(10));
+    }
+
+    #[test]
+    fn test_configured_applies_user_timeouts() {
+        let config = hades_config::ProviderConfig {
+            local_stream_idle_timeout_secs: 1800,
+            cloud_request_timeout_secs: 45,
+            ..Default::default()
+        };
+        let ollama = OpenAiProvider::ollama().configured(&config);
+        assert_eq!(
+            ollama.timeouts().stream_idle,
+            Some(Duration::from_secs(1800))
+        );
+        let openai = OpenAiProvider::openai().configured(&config);
+        assert_eq!(openai.timeouts().request, Some(Duration::from_secs(45)));
+        assert_eq!(openai.id(), "openai");
+    }
+
+    #[tokio::test]
+    async fn test_long_stream_outlives_idle_timeout_while_tokens_flow() {
+        // Total duration (~1.2s) is several times the idle timeout (400ms), but each gap is shorter.
+        let events = vec![
+            (300, delta("one ")),
+            (300, delta("two ")),
+            (300, delta("three")),
+            (300, "[DONE]".to_string()),
+        ];
+        let endpoint = spawn_server(Script::Stream(events)).await;
+        let provider = ollama_with(Some(400), None);
+
+        let started = Instant::now();
+        let (text, err) = collect(&provider, &endpoint).await;
+        assert!(err.is_none(), "unexpected error: {err:?}");
+        assert_eq!(text, "one two three");
+        assert!(started.elapsed() > Duration::from_millis(400));
+    }
+
+    #[tokio::test]
+    async fn test_stalled_stream_reports_timeout() {
+        let events = vec![(0, delta("partial")), (3000, "[DONE]".to_string())];
+        let endpoint = spawn_server(Script::Stream(events)).await;
+        let provider = ollama_with(Some(300), None);
+
+        let (text, err) = collect(&provider, &endpoint).await;
+        assert_eq!(text, "partial");
+        match err {
+            Some(ProviderError::Timeout { message, .. }) => {
+                assert!(message.contains("local_stream_idle_timeout_secs"));
+            }
+            other => panic!("expected timeout, got {other:?}"),
+        }
+    }
+
+    #[tokio::test]
+    async fn test_dropped_stream_reports_interruption() {
+        let endpoint = spawn_server(Script::DropMidStream).await;
+        let provider = ollama_with(Some(5000), None);
+
+        let (text, err) = collect(&provider, &endpoint).await;
+        assert_eq!(text, "Hi");
+        match err {
+            Some(ProviderError::StreamError { message, .. }) => {
+                assert!(message.contains("interrupted during token generation"));
+            }
+            other => panic!("expected stream interruption, got {other:?}"),
+        }
+    }
+
+    #[tokio::test]
+    async fn test_offline_ollama_fails_fast_with_clear_message() {
+        // Reserve a port, then close it so nothing is listening.
+        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        drop(listener);
+        let endpoint = format!("http://{addr}/v1");
+        let provider = OpenAiProvider::ollama();
+
+        let started = Instant::now();
+        let (_, err) = collect(&provider, &endpoint).await;
+        assert!(started.elapsed() < Duration::from_secs(5));
+        match err {
+            Some(ProviderError::ServerUnavailable { message, .. }) => {
+                assert!(message.contains("Is Ollama running?"));
+                assert!(message.contains(&endpoint));
+            }
+            other => panic!("expected connection failure, got {other:?}"),
+        }
+
+        let auth = provider.authenticate(&credential(&endpoint)).await;
+        assert!(matches!(auth, Err(ProviderError::ServerUnavailable { .. })));
+    }
+
+    #[tokio::test]
+    async fn test_non_streaming_request_timeout_is_reported() {
+        let endpoint = spawn_server(Script::Hang).await;
+        let provider = ollama_with(None, Some(300));
+
+        let request = CompletionRequest::single_prompt("llama3", "hello");
+        let result = provider.complete(request, &credential(&endpoint)).await;
+        assert!(
+            matches!(result, Err(ProviderError::Timeout { .. })),
+            "expected timeout, got {result:?}"
+        );
     }
 }
