@@ -1409,4 +1409,33 @@ mod tests {
         state.adjust_palette_scroll(total, visible);
         assert_eq!(state.palette_scroll_offset, 3);
     }
+
+    #[test]
+    fn test_clear_command_returns_clear_action() {
+        let (mut app, _dir) = create_test_app();
+        let mut state = TuiState::new();
+        state.prompt_input = "/clear".to_string();
+
+        let action = InputHandler::handle_key_event(make_key(KeyCode::Enter), &mut app, &mut state)
+            .expect("submit /clear");
+
+        assert_eq!(action, KeyActionResult::ClearSession);
+        assert!(state.prompt_input.is_empty());
+    }
+
+    #[test]
+    fn test_clear_conversation_resets_viewport() {
+        let mut state = TuiState::new();
+        state.turns.push(state::ChatTurn::new("hello"));
+        state.active_output = Some(CommandOutput::Text("old".to_string()));
+        state.scroll_offset = 42;
+        state.content_height = 100;
+
+        state.clear_conversation();
+
+        assert!(state.turns.is_empty());
+        assert!(state.active_output.is_none());
+        assert_eq!(state.scroll_offset, 0);
+        assert!(state.auto_scroll_to_bottom);
+    }
 }

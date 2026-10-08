@@ -197,4 +197,23 @@ mod tests {
         assert_eq!(generate_session_title("   "), "New Session");
         assert_eq!(generate_session_title("what is Rust?"), "What is Rust?");
     }
+
+    #[test]
+    fn test_clear_messages_keeps_session_identity() {
+        let mut record = SessionRecord::new(None, Some("openai".into()), Some("gpt-4o".into()));
+        let id = record.metadata.id.clone();
+        record.add_message(Message::user(&id, "hello there"));
+        let title = record.metadata.title.clone();
+        let created_at = record.metadata.created_at;
+
+        record.clear_messages();
+
+        assert!(record.messages.is_empty());
+        assert_eq!(record.metadata.message_count, 0);
+        assert_eq!(record.metadata.last_message_at, None);
+        assert_eq!(record.metadata.id, id);
+        assert_eq!(record.metadata.title, title);
+        assert_eq!(record.metadata.created_at, created_at);
+        assert_eq!(record.metadata.active_model.as_deref(), Some("gpt-4o"));
+    }
 }

@@ -480,6 +480,15 @@ impl TuiState {
     }
 
     /// Scrolls directly to the latest conversation content at the bottom (End).
+    /// Resets the conversation viewport after `/clear`.
+    pub fn clear_conversation(&mut self) {
+        self.turns.clear();
+        self.active_output = None;
+        self.current_usage = None;
+        self.content_height = 0;
+        self.scroll_to_bottom();
+    }
+
     pub fn scroll_to_bottom(&mut self) {
         self.scroll_offset = self.max_scroll_offset();
         self.auto_scroll_to_bottom = true;

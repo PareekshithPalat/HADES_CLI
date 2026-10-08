@@ -73,6 +73,9 @@ pub enum CommandOutput {
     /// Signal to create a new session.
     NewSession,
 
+    /// Signal to clear the active session's conversation while keeping the session.
+    ClearSession,
+
     /// Signal to open the interactive session switcher overlay.
     OpenSessionPicker,
 
@@ -137,6 +140,7 @@ impl fmt::Display for CommandOutput {
             Self::OpenModelSetup => write!(f, "Opening AI model configuration..."),
             Self::OpenModelSwitch => write!(f, "Opening model switch for current session..."),
             Self::NewSession => write!(f, "Created new conversation session."),
+            Self::ClearSession => write!(f, "Cleared conversation for the current session."),
             Self::OpenSessionPicker => write!(f, "Opening session switcher..."),
             Self::ExportSuccess(path) => {
                 write!(f, "Successfully exported session to {}", path.display())
@@ -215,6 +219,7 @@ pub struct CommandContext<'a> {
     pub open_model_setup_requested: bool,
     pub open_model_switch_requested: bool,
     pub new_session_requested: bool,
+    pub clear_session_requested: bool,
     pub open_session_picker_requested: bool,
     pub available_commands: Vec<HelpEntry>,
     pub workspace_info: Option<&'a WorkspaceMetadata>,
@@ -256,6 +261,7 @@ impl<'a> CommandContext<'a> {
             open_model_setup_requested: false,
             open_model_switch_requested: false,
             new_session_requested: false,
+            clear_session_requested: false,
             open_session_picker_requested: false,
             available_commands,
             workspace_info: None,
@@ -337,6 +343,11 @@ impl<'a> CommandContext<'a> {
     /// Requests creating a new session.
     pub fn request_new_session(&mut self) {
         self.new_session_requested = true;
+    }
+
+    /// Requests clearing the active session's conversation.
+    pub fn request_clear_session(&mut self) {
+        self.clear_session_requested = true;
     }
 
     /// Requests opening interactive session picker.
@@ -613,6 +624,29 @@ impl Command for NewSessionCommand {
     fn execute(&self, context: &mut CommandContext) -> Result<CommandOutput, CommandError> {
         context.request_new_session();
         Ok(CommandOutput::NewSession)
+    }
+}
+
+/// Command: `/clear`
+pub struct ClearCommand;
+
+impl Command for ClearCommand {
+    fn name(&self) -> &'static str {
+        "/clear"
+    }
+
+    fn description(&self) -> &'static str {
+        "Clear the conversation and reset model context (keeps the current session)"
+    }
+
+    fn execute(&self, context: &mut CommandContext) -> Result<CommandOutput, CommandError> {
+        if context.session_id.is_none() {
+            return Err(CommandError::ExecutionFailed(
+                "No active session to clear".to_string(),
+            ));
+        }
+        context.request_clear_session();
+        Ok(CommandOutput::ClearSession)
     }
 }
 
@@ -1480,6 +1514,7 @@ impl CommandRegistry {
         registry.register(ModelCommand);
         registry.register(SwitchCommand);
         registry.register(NewSessionCommand);
+        registry.register(ClearCommand);
         registry.register(SessionsCommand);
         registry.register(ToolsCommand);
         registry.register(WorkspaceCommand);
@@ -1882,5 +1917,54 @@ mod tests {
         let items_test = registry.filter_palette("/mcp test github", None);
         assert_eq!(items_test.len(), 1);
         assert_eq!(items_test[0].execution_text, "/mcp test github");
+    }
+
+    #[test]
+    fn test_clear_command_signals_clear_and_requires_session() {
+        let config = HadesConfig::default();
+        let health = StorageHealth {
+            status: hades_storage::StorageStatus::Ready,
+            root_dir: PathBuf::from("."),
+            writable: true,
+        };
+
+        let mut with_session = CommandContext::new(
+            AppState::Running,
+            &config,
+            &health,
+            Some("session-1"),
+            Some("Title"),
+            4,
+            None,
+            None,
+            "0.0.0",
+            Vec::new(),
+        );
+        let output = ClearCommand.execute(&mut with_session).expect("clear");
+        assert_eq!(output, CommandOutput::ClearSession);
+        assert!(with_session.clear_session_requested);
+
+        let mut without_session = CommandContext::new(
+            AppState::Running,
+            &config,
+            &health,
+            None,
+            None,
+            0,
+            None,
+            None,
+            "0.0.0",
+            Vec::new(),
+        );
+        assert!(ClearCommand.execute(&mut without_session).is_err());
+        assert!(!without_session.clear_session_requested);
+    }
+
+    #[test]
+    fn test_clear_command_is_registered_and_in_palette() {
+        let registry = CommandRegistry::with_defaults();
+        assert!(registry.find("/clear").is_some());
+        let items = registry.filter_palette("/cl", None);
+        assert!(items.iter().any(|i| i.execution_text == "/clear"));
     }
 }

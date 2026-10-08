@@ -22,6 +22,9 @@ pub enum KeyActionResult {
     /// User requested starting a brand new conversation session.
     NewSession,
 
+    /// User requested clearing the active session's conversation.
+    ClearSession,
+
     /// User requested opening the session switcher modal.
     OpenSessionPicker,
 
@@ -168,6 +171,7 @@ impl InputHandler {
                                 Ok(KeyActionResult::Handled)
                             }
                             CommandOutput::NewSession => Ok(KeyActionResult::NewSession),
+                            CommandOutput::ClearSession => Ok(KeyActionResult::ClearSession),
                             CommandOutput::OpenSessionPicker => {
                                 Ok(KeyActionResult::OpenSessionPicker)
                             }
@@ -538,6 +542,7 @@ impl InputHandler {
                             Ok(KeyActionResult::Handled)
                         }
                         CommandOutput::NewSession => Ok(KeyActionResult::NewSession),
+                        CommandOutput::ClearSession => Ok(KeyActionResult::ClearSession),
                         CommandOutput::OpenSessionPicker => Ok(KeyActionResult::OpenSessionPicker),
                         CommandOutput::OpenMcpSetup => Ok(KeyActionResult::Handled),
                         CommandOutput::ExportSuccess(path) => {
