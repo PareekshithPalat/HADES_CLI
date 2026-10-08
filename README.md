@@ -155,6 +155,12 @@ cd /path/to/my-project && hadey
 # Resume a previous conversation session by ID
 hadey --session 3f9a1b2c-4d5e-6f7a-8b9c-0d1e2f3a4b5c
 
+# One-off non-interactive prompt for scripts and CI (streams to stdout, exits 0 on success)
+hadey -p "What is 2+2?"
+hadey -p "explain this error: $(cat error.log)"
+cat error.log | hadey -p -
+# Read-only tools run automatically; tools that need approval are skipped in this mode.
+
 # Launch with custom configuration and data paths
 hadey --config ~/.config/hades/custom.toml --data-dir ~/my_hades_storage
 
@@ -182,6 +188,7 @@ Options:
       --prune                Delete saved sessions that have no messages, then exit (active session is kept)
       --prune-older-than <DAYS>  Also delete sessions inactive for more than DAYS days (implies --prune)
   -s, --session <SESSION_ID> Resume an existing conversation session by ID
+  -p, --prompt <TEXT>        Run one prompt non-interactively, stream the answer to stdout and exit ("-" reads stdin)
   -h, --help                 Print help
   -V, --version              Print version
 ```

@@ -2,6 +2,7 @@ pub mod app;
 pub mod command;
 pub mod context;
 pub mod error;
+pub mod headless;
 pub mod notification;
 pub mod orchestration;
 pub mod state;
@@ -16,6 +17,7 @@ pub use command::{
 
 pub use context::{ContextManager, ContextReport, TokenEstimator, UsageKind};
 pub use error::{CommandError, CoreError};
+pub use headless::HeadlessOutcome;
 pub use notification::{NotificationKind, NotificationService, SoundPlayer};
 pub use orchestration::{
     CapabilityIndex, OrchestrationResult, ProviderTokenProfile, RequestPlan, SmartContextBuilder,

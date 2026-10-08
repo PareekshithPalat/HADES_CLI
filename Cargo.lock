@@ -1037,6 +1037,7 @@ version = "0.1.0"
 dependencies = [
  "async-trait",
  "chrono",
+ "futures",
  "hades-agent",
  "hades-browser",
  "hades-config",
