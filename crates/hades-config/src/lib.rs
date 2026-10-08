@@ -20,6 +20,7 @@ mod tests {
         assert_eq!(config.version, CURRENT_CONFIG_VERSION);
         assert_eq!(config.general.app_name, "hades");
         assert_eq!(config.general.default_mode, "simple");
+        assert_eq!(config.general.theme, "fire");
         assert_eq!(config.ui.theme, "dark");
         assert!(config.ui.show_status_bar);
         assert_eq!(config.model, None);
@@ -51,6 +52,17 @@ mod tests {
         let loaded = service.load().expect("load config");
         assert_eq!(loaded, config);
         assert_eq!(loaded.model.as_ref().unwrap().model_id, "gpt-4o");
+    }
+
+    #[test]
+    fn test_general_theme_loads_from_toml() {
+        let dir = tempdir().expect("create temp dir");
+        let config_path = dir.path().join("config.toml");
+        std::fs::write(&config_path, "[general]\ntheme = \"matrix\"\n")
+            .expect("write config");
+
+        let config = ConfigService::with_path(config_path).load().expect("load config");
+        assert_eq!(config.general.theme, "matrix");
     }
 
     #[test]

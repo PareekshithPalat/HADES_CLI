@@ -3,10 +3,121 @@ use ratatui::{
     text::{Line, Span, Text},
 };
 
+/// The ratatui colors used by one named Hades terminal palette.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct ThemePalette {
+    pub primary: Color,
+    pub accent: Color,
+    pub alert: Color,
+    pub info: Color,
+    pub muted: Color,
+    gradient_start: (u8, u8, u8),
+    gradient_mid: (u8, u8, u8),
+    gradient_end: (u8, u8, u8),
+}
+
+impl ThemePalette {
+    const fn new(
+        primary: Color,
+        accent: Color,
+        alert: Color,
+        info: Color,
+        muted: Color,
+        gradient_start: (u8, u8, u8),
+        gradient_mid: (u8, u8, u8),
+        gradient_end: (u8, u8, u8),
+    ) -> Self {
+        Self { primary, accent, alert, info, muted, gradient_start, gradient_mid, gradient_end }
+    }
+}
+
+thread_local! {
+    static ACTIVE_PALETTE: std::cell::Cell<ThemePalette> = const {
+        std::cell::Cell::new(HadesTheme::FIRE)
+    };
+}
+
 /// Centralized color palette and visual styling for Hades CLI.
 pub struct HadesTheme;
 
 impl HadesTheme {
+    pub const FIRE: ThemePalette = ThemePalette::new(
+        Color::Rgb(255, 125, 0), Color::Rgb(255, 195, 0), Color::Rgb(255, 85, 0),
+        Color::Rgb(0, 200, 255), Color::DarkGray,
+        (255, 40, 0), (255, 110, 0), (255, 200, 0),
+    );
+    pub const MATRIX: ThemePalette = ThemePalette::new(
+        Color::Rgb(0, 220, 100), Color::Rgb(170, 255, 0), Color::Rgb(0, 150, 70),
+        Color::Rgb(80, 255, 180), Color::DarkGray,
+        (0, 110, 45), (0, 190, 75), (170, 255, 0),
+    );
+    pub const CYAN: ThemePalette = ThemePalette::new(
+        Color::Rgb(0, 220, 255), Color::Rgb(60, 140, 255), Color::Rgb(0, 150, 220),
+        Color::Rgb(100, 240, 255), Color::DarkGray,
+        (0, 120, 190), (0, 210, 255), (60, 140, 255),
+    );
+    pub const MONOCHROME: ThemePalette = ThemePalette::new(
+        Color::White, Color::Gray, Color::LightRed, Color::LightCyan, Color::DarkGray,
+        (150, 150, 150), (210, 210, 210), (255, 255, 255),
+    );
+
+    /// Resolves a configured palette name. Unknown names deliberately use fire.
+    pub fn palette(name: &str) -> ThemePalette {
+        match name.trim().to_ascii_lowercase().as_str() {
+            "matrix" => Self::MATRIX,
+            "cyan" => Self::CYAN,
+            "monochrome" | "mono" => Self::MONOCHROME,
+            "fire" => Self::FIRE,
+            _ => Self::FIRE,
+        }
+    }
+
+    /// Selects the palette used by the current TUI render thread.
+    pub fn set_active(name: &str) {
+        ACTIVE_PALETTE.with(|palette| palette.set(Self::palette(name)));
+    }
+
+    fn active() -> ThemePalette {
+        ACTIVE_PALETTE.with(|palette| palette.get())
+    }
+
+    pub fn primary() -> Color { Self::active().primary }
+    pub fn accent() -> Color { Self::active().accent }
+    pub fn alert() -> Color { Self::active().alert }
+    pub fn info() -> Color { Self::active().info }
+    pub fn muted() -> Color { Self::active().muted }
+
+    /// Recolors legacy fire-styled widgets after they have been rendered.
+    /// This keeps all existing widget styling on the selected palette while the
+    /// TUI is progressively migrated away from the original named constants.
+    pub fn apply_to_buffer(buffer: &mut ratatui::buffer::Buffer) {
+        let palette = Self::active();
+        for cell in buffer.content_mut() {
+            if cell.fg() == Self::RATATUI_ORANGE {
+                cell.set_fg(palette.primary);
+            } else if cell.fg() == Self::RATATUI_GOLD {
+                cell.set_fg(palette.accent);
+            } else if cell.fg() == Self::RATATUI_FIRE {
+                cell.set_fg(palette.alert);
+            } else if cell.fg() == Self::RATATUI_CYAN {
+                cell.set_fg(palette.info);
+            } else if cell.fg() == Self::RATATUI_DARK_GRAY {
+                cell.set_fg(palette.muted);
+            }
+
+            if cell.bg() == Self::RATATUI_ORANGE {
+                cell.set_bg(palette.primary);
+            } else if cell.bg() == Self::RATATUI_GOLD {
+                cell.set_bg(palette.accent);
+            } else if cell.bg() == Self::RATATUI_FIRE {
+                cell.set_bg(palette.alert);
+            } else if cell.bg() == Self::RATATUI_CYAN {
+                cell.set_bg(palette.info);
+            } else if cell.bg() == Self::RATATUI_DARK_GRAY {
+                cell.set_bg(palette.muted);
+            }
+        }
+    }
     // ANSI Escape Color Codes (Fiery Orange / Fire Aesthetic) — kept for
     // plain terminal writes outside of ratatui (logs, early boot text, etc).
     pub const GOLD: &'static str = "\x1b[38;5;220m";
@@ -28,11 +139,6 @@ impl HadesTheme {
     pub const RATATUI_DARK_GRAY: Color = Color::DarkGray;
     pub const RATATUI_CYAN: Color = Color::Rgb(0, 200, 255);
 
-    // Gradient endpoints for the wordmark: deep fire-red -> orange -> gold
-    const GRAD_START: (u8, u8, u8) = (255, 40, 0); // fire red
-    const GRAD_MID: (u8, u8, u8) = (255, 110, 0); // orange
-    const GRAD_END: (u8, u8, u8) = (255, 200, 0); // gold
-
     // Unicode & ASCII Branding
     pub const TRIDENT: &'static str = "🔱";
     pub const TRIDENT_FALLBACK: &'static str = "[Ψ]";
@@ -52,9 +158,9 @@ impl HadesTheme {
     fn gradient_color(t: f32) -> Color {
         let t = t.clamp(0.0, 1.0);
         let (a, b, frac) = if t < 0.5 {
-            (Self::GRAD_START, Self::GRAD_MID, t / 0.5)
+            (Self::active().gradient_start, Self::active().gradient_mid, t / 0.5)
         } else {
-            (Self::GRAD_MID, Self::GRAD_END, (t - 0.5) / 0.5)
+            (Self::active().gradient_mid, Self::active().gradient_end, (t - 0.5) / 0.5)
         };
         let lerp = |x: u8, y: u8| -> u8 { (x as f32 + (y as f32 - x as f32) * frac).round() as u8 };
         Color::Rgb(lerp(a.0, b.0), lerp(a.1, b.1), lerp(a.2, b.2))
@@ -80,7 +186,7 @@ impl HadesTheme {
             };
             spans.push(Span::styled(
                 gutter,
-                Style::default().fg(Self::RATATUI_GOLD),
+                Style::default().fg(Self::accent()),
             ));
 
             for (col, ch) in raw.chars().enumerate() {
@@ -99,7 +205,7 @@ impl HadesTheme {
         lines.push(Line::from(Span::styled(
             "     Universal AI Agent CLI",
             Style::default()
-                .fg(Self::RATATUI_DARK_GRAY)
+                .fg(Self::muted())
                 .add_modifier(Modifier::ITALIC),
         )));
 
@@ -112,7 +218,7 @@ impl HadesTheme {
         let name = "HADES";
         let mut spans = vec![Span::styled(
             format!("{} ", Self::TRIDENT),
-            Style::default().fg(Self::RATATUI_GOLD),
+            Style::default().fg(Self::accent()),
         )];
 
         let len = name.chars().count().max(1);
@@ -130,8 +236,27 @@ impl HadesTheme {
             Line::from(spans),
             Line::from(Span::styled(
                 "Universal AI Agent CLI",
-                Style::default().fg(Self::RATATUI_DARK_GRAY),
+                Style::default().fg(Self::muted()),
             )),
         ])
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn named_palettes_have_distinct_primary_accents() {
+        assert_eq!(HadesTheme::palette("fire"), HadesTheme::FIRE);
+        assert_eq!(HadesTheme::palette("matrix").primary, Color::Rgb(0, 220, 100));
+        assert_eq!(HadesTheme::palette("cyan").primary, Color::Rgb(0, 220, 255));
+        assert_eq!(HadesTheme::palette("monochrome").primary, Color::White);
+    }
+
+    #[test]
+    fn unknown_palette_falls_back_to_fire() {
+        assert_eq!(HadesTheme::palette("not-a-theme"), HadesTheme::FIRE);
+        assert_eq!(HadesTheme::palette(" MATRIX "), HadesTheme::MATRIX);
     }
 }
