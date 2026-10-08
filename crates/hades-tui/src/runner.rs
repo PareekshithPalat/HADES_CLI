@@ -79,6 +79,16 @@ impl TuiRunner {
                                         }
                                     }
                                 }
+                                KeyActionResult::ClearSession => {
+                                    match app.clear_active_session().await {
+                                        Ok(()) => {
+                                            tui_state.clear_conversation();
+                                            tui_state.show_toast("Conversation cleared");
+                                        }
+                                        Err(e) => tui_state.set_error(e.to_string()),
+                                    }
+                                    app.transition_to(AppState::Running)?;
+                                }
                                 KeyActionResult::OpenSessionPicker => {
                                     match app.list_sessions().await {
                                         Ok(sessions) => {

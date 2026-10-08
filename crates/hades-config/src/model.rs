@@ -28,6 +28,10 @@ pub struct HadesConfig {
     #[serde(default)]
     pub model: Option<ActiveModelConfig>,
 
+    /// Provider network and timeout settings.
+    #[serde(default)]
+    pub provider: ProviderConfig,
+
     /// Model Context Protocol (MCP) settings and server definitions.
     #[serde(default)]
     pub mcp: McpConfig,
@@ -49,6 +53,7 @@ impl Default for HadesConfig {
             ui: UiConfig::default(),
             notification: NotificationConfig::default(),
             model: None,
+            provider: ProviderConfig::default(),
             mcp: McpConfig::default(),
             browser: BrowserConfig::default(),
         }
@@ -72,6 +77,7 @@ impl HadesConfig {
             m.validate()?;
         }
 
+        self.provider.validate()?;
         self.mcp.validate()?;
         self.browser.validate()?;
 
@@ -204,6 +210,77 @@ impl ActiveModelConfig {
         if self.model_id.trim().is_empty() {
             return Err(ConfigError::Validation(
                 "Model ID cannot be empty".to_string(),
+            ));
+        }
+        Ok(())
+    }
+}
+
+fn default_connect_timeout_secs() -> u64 {
+    10
+}
+
+fn default_cloud_request_timeout_secs() -> u64 {
+    300
+}
+
+fn default_cloud_stream_idle_timeout_secs() -> u64 {
+    120
+}
+
+fn default_local_request_timeout_secs() -> u64 {
+    0
+}
+
+fn default_local_stream_idle_timeout_secs() -> u64 {
+    600
+}
+
+/// Provider network and timeout configuration.
+///
+/// A value of `0` disables the corresponding timeout. Stream idle timeouts reset
+/// every time a chunk is received, so long but active generations never time out.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ProviderConfig {
+    /// Maximum time allowed to establish a TCP/TLS connection to a provider.
+    #[serde(default = "default_connect_timeout_secs")]
+    pub connect_timeout_secs: u64,
+
+    /// Total timeout for non-streaming requests to cloud providers.
+    #[serde(default = "default_cloud_request_timeout_secs")]
+    pub cloud_request_timeout_secs: u64,
+
+    /// Maximum silence between streamed chunks from cloud providers.
+    #[serde(default = "default_cloud_stream_idle_timeout_secs")]
+    pub cloud_stream_idle_timeout_secs: u64,
+
+    /// Total timeout for non-streaming requests to local providers (Ollama). Disabled by default.
+    #[serde(default = "default_local_request_timeout_secs")]
+    pub local_request_timeout_secs: u64,
+
+    /// Maximum silence between streamed chunks from local providers, including
+    /// time-to-first-token while the model loads.
+    #[serde(default = "default_local_stream_idle_timeout_secs")]
+    pub local_stream_idle_timeout_secs: u64,
+}
+
+impl Default for ProviderConfig {
+    fn default() -> Self {
+        Self {
+            connect_timeout_secs: default_connect_timeout_secs(),
+            cloud_request_timeout_secs: default_cloud_request_timeout_secs(),
+            cloud_stream_idle_timeout_secs: default_cloud_stream_idle_timeout_secs(),
+            local_request_timeout_secs: default_local_request_timeout_secs(),
+            local_stream_idle_timeout_secs: default_local_stream_idle_timeout_secs(),
+        }
+    }
+}
+
+impl ProviderConfig {
+    pub fn validate(&self) -> Result<(), ConfigError> {
+        if self.connect_timeout_secs == 0 {
+            return Err(ConfigError::Validation(
+                "Provider connect_timeout_secs must be greater than 0".to_string(),
             ));
         }
         Ok(())

@@ -3,6 +3,7 @@ mod logging;
 mod prune;
 
 use clap::Parser;
+use std::io::Read;
 use tracing::{error, info};
 
 use cli::CliArgs;
@@ -97,7 +98,15 @@ async fn main() {
         std::process::exit(1);
     }
 
-    // 7. Launch interactive terminal user interface
+    // 7. Non-interactive one-off prompt (`--prompt` / `-p`) bypasses the TUI entirely
+    if let Some(prompt) = args.prompt {
+        let succeeded = run_headless_prompt(&mut app, &prompt, args.session.as_deref()).await;
+        // Drop the app first so MCP and browser child processes are cleaned up before exiting.
+        drop(app);
+        std::process::exit(if succeeded { 0 } else { 1 });
+    }
+
+    // 8. Launch interactive terminal user interface
     if let Err(e) = TuiRunner::run(&mut app, args.session).await {
         error!(error = %e, "TUI encountered an unexpected error");
         eprintln!("TUI runtime error: {}", e);
@@ -105,4 +114,57 @@ async fn main() {
     }
 
     info!("Hades exited cleanly");
+}
+
+/// Runs a single prompt without the TUI. The answer goes to stdout and diagnostics to
+/// stderr, so the output can be piped. Returns whether the run succeeded.
+async fn run_headless_prompt(app: &mut HadesApp, prompt: &str, session: Option<&str>) -> bool {
+    let prompt = if prompt == "-" {
+        let mut buffer = String::new();
+        if let Err(e) = std::io::stdin().read_to_string(&mut buffer) {
+            eprintln!("Error: failed to read prompt from stdin: {e}");
+            return false;
+        }
+        buffer
+    } else {
+        prompt.to_string()
+    };
+
+    if app.model_manager().active_model_id().is_none() {
+        eprintln!(
+            "Error: No active AI model configured. Run `hades` and select one with /model before using --prompt."
+        );
+        return false;
+    }
+
+    match app.init_session(session).await {
+        Ok(Some(warning)) => eprintln!("Warning: {warning}"),
+        Ok(None) => {}
+        Err(e) => {
+            eprintln!("Error: {e}");
+            return false;
+        }
+    }
+
+    let mut stdout = std::io::stdout().lock();
+    let mut stderr = std::io::stderr();
+    match app
+        .run_headless_prompt(&prompt, &mut stdout, &mut stderr)
+        .await
+    {
+        Ok(outcome) => {
+            info!(
+                tools_executed = outcome.tools_executed,
+                tools_denied = outcome.tools_denied,
+                "Headless prompt completed"
+            );
+            true
+        }
+        Err(e) => {
+            error!(error = %e, "Headless prompt failed");
+            drop(stdout);
+            eprintln!("\nError: {e}");
+            false
+        }
+    }
 }

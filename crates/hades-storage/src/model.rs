@@ -280,6 +280,15 @@ impl SessionRecord {
     }
 
     /// Appends a message to the session and recalculates metadata metrics.
+    /// Removes all messages while keeping the session identity and metadata (id, title,
+    /// creation time, model and cumulative token usage).
+    pub fn clear_messages(&mut self) {
+        self.messages.clear();
+        self.metadata.message_count = 0;
+        self.metadata.last_message_at = None;
+        self.metadata.updated_at = Utc::now();
+    }
+
     pub fn add_message(&mut self, message: Message) {
         self.metadata.message_count += 1;
         self.metadata.last_message_at = Some(message.created_at);

@@ -36,6 +36,24 @@ pub struct PendingApproval {
     pub agent_name: Option<String>,
 }
 
+/// Registers the built-in OpenAI-compatible provider suite using the configured network timeouts.
+///
+/// Re-registering replaces existing providers with the same id, so this is safe to call again
+/// once the user configuration has been loaded.
+fn register_builtin_providers(
+    model_manager: &mut ModelManager,
+    provider_config: &hades_config::ProviderConfig,
+) {
+    for provider in [
+        OpenAiProvider::openai(),
+        OpenAiProvider::groq(),
+        OpenAiProvider::ollama(),
+        OpenAiProvider::custom(),
+    ] {
+        model_manager.register_provider(Arc::new(provider.configured(provider_config)));
+    }
+}
+
 /// Central core runtime managing application lifecycle, sessions, context, providers, and subsystems.
 pub struct HadesApp {
     state: AppState,
@@ -70,12 +88,7 @@ impl HadesApp {
         event_bus: EventBus,
     ) -> Self {
         let mut model_manager = ModelManager::new();
-
-        // Register Phase 1 OpenAI-compatible provider suite
-        model_manager.register_provider(Arc::new(OpenAiProvider::openai()));
-        model_manager.register_provider(Arc::new(OpenAiProvider::groq()));
-        model_manager.register_provider(Arc::new(OpenAiProvider::ollama()));
-        model_manager.register_provider(Arc::new(OpenAiProvider::custom()));
+        register_builtin_providers(&mut model_manager, &HadesConfig::default().provider);
 
         let credential_backend: Arc<dyn CredentialBackend> =
             match FileCredentialBackend::default_location() {
@@ -178,6 +191,7 @@ impl HadesApp {
         self.config = self.config_service.load_or_create()?;
         self.notification_service
             .update_config(self.config.notification.clone());
+        register_builtin_providers(&mut self.model_manager, &self.config.provider);
         self.event_bus
             .publish(HadesEvent::config_loaded(self.config_service.config_path()));
 
@@ -1046,7 +1060,12 @@ impl HadesApp {
             }
         }
 
-        // Persist tool message to active session
+        self.persist_tool_result(&result).await;
+        result
+    }
+
+    /// Persists a tool result message to the active session so the next model turn can see it.
+    pub async fn persist_tool_result(&mut self, result: &ToolResult) {
         if let Some(ref mut session) = self.active_session {
             let session_id = session.metadata.id.clone();
             let tool_output = if !result.output.is_empty() {
@@ -1060,8 +1079,13 @@ impl HadesApp {
             session.add_message(msg);
             let _ = self.session_repository.save_session(session).await;
         }
+    }
 
-        result
+    /// Enables or disables sound notifications for this run without changing the saved config.
+    pub fn set_notifications_enabled(&mut self, enabled: bool) {
+        let mut config = self.notification_service.config().clone();
+        config.enabled = enabled;
+        self.notification_service.update_config(config);
     }
 
     /// Transitions application state if allowed, publishing state change event.
@@ -1115,6 +1139,19 @@ impl HadesApp {
 
         self.active_session = Some(record.clone());
         Ok(record)
+    }
+
+    /// Clears all messages from the active session so the next prompt starts with a fresh
+    /// model context, while keeping the session id, title and metadata.
+    pub async fn clear_active_session(&mut self) -> Result<(), CoreError> {
+        let session = self
+            .active_session
+            .as_mut()
+            .ok_or_else(|| CoreError::Runtime("No active session to clear".to_string()))?;
+        session.clear_messages();
+        self.session_repository.save_session(session).await?;
+        self.last_request_plan = None;
+        Ok(())
     }
 
     /// Switches the active conversation session to the specified session ID.

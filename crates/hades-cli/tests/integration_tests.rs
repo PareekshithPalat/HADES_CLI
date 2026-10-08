@@ -954,3 +954,27 @@ async fn test_hades_mcp_server_cli_mode() {
         .combined_text()
         .contains("Hello from Hades MCP Server workspace!"));
 }
+
+#[test]
+fn test_prompt_flag_without_model_exits_nonzero_without_tui() {
+    let dir = tempdir().expect("create temp dir");
+    let output = std::process::Command::new(env!("CARGO_BIN_EXE_hades"))
+        .arg("--config")
+        .arg(dir.path().join("config.toml"))
+        .arg("--data-dir")
+        .arg(dir.path().join("data"))
+        .arg("--log-dir")
+        .arg(dir.path().join("logs"))
+        .args(["-p", "What is 2+2?"])
+        .stdin(std::process::Stdio::null())
+        .output()
+        .expect("run hades binary");
+
+    assert_eq!(output.status.code(), Some(1));
+    assert!(
+        output.stdout.is_empty(),
+        "stdout must stay clean on failure"
+    );
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(stderr.contains("No active AI model configured"));
+}

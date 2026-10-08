@@ -7,7 +7,7 @@ use crate::environment::{
 };
 use crate::filesystem::{
     FileSystemCreateTool, FileSystemDeleteTool, FileSystemEditTool, FileSystemListTool,
-    FileSystemMkdirTool, FileSystemReadTool, FileSystemWriteTool,
+    FileSystemMkdirTool, FileSystemReadTool, FileSystemSearchTool, FileSystemWriteTool,
 };
 use crate::shell::ShellExecuteTool;
 use crate::system::{
@@ -71,6 +71,7 @@ impl ToolRegistry {
         // Filesystem tools
         reg.register(FileSystemListTool);
         reg.register(FileSystemReadTool);
+        reg.register(FileSystemSearchTool);
         reg.register(FileSystemCreateTool);
         reg.register(FileSystemWriteTool);
         reg.register(FileSystemEditTool);

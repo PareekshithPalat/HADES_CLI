@@ -68,7 +68,7 @@ Unlike browser-based assistants or opaque cloud coding tools, Hades executes nat
        ┌───────────────────────┬───────────────┴───────────────┬───────────────────────┐
        ▼                       ▼                               ▼                       ▼
 ┌──────────────┐      ┌─────────────────┐             ┌─────────────────┐     ┌─────────────────┐
-│  AI Engine   │      │ 51-Tool Sandbox │             │   Multi-Agent   │     │ Web & Browser   │
+│  AI Engine   │      │ 52-Tool Sandbox │             │   Multi-Agent   │     │ Web & Browser   │
 │ OpenAI / Groq│      │ Filesystem, OS, │             │  Orchestration  │     │ Direct Search & │
 │ DeepSeek     │      │ Shell, Network, │             │ Planner, Coder, │     │ Fetch, Headless │
 │ Local Ollama │      │ Process & Runtime│            │ Reviewer, DevOps│     │ Chromium Sidecar│
@@ -93,7 +93,7 @@ Unlike browser-based assistants or opaque cloud coding tools, Hades executes nat
 - **Dynamic Capability Probing**: Inspects model capabilities on the fly (streaming, tool payloads, JSON schema validation, context window size).
 - **Secure Credential Vault**: API keys are securely stored in local encrypted files (`~/.hades/credentials.json`) and automatically redacted from logs, transcripts, and UI viewports.
 
-### 2. Sandboxed Tool Execution (51 Built-in Tools)
+### 2. Sandboxed Tool Execution (52 Built-in Tools)
 - **Filesystem & Codebase Operations**: Safe file creation, surgical line-based editing, directory scanning, and deletion within validated workspace boundaries.
 - **Shell & Process Management**: Run build scripts, test suites, and terminal commands with configurable timeouts and output truncation guards.
 - **System & Network Diagnostics**: Inspect CPU, memory, uptime, open ports, socket states, and running processes with PID resolution.
@@ -155,6 +155,12 @@ cd /path/to/my-project && hadey
 # Resume a previous conversation session by ID
 hadey --session 3f9a1b2c-4d5e-6f7a-8b9c-0d1e2f3a4b5c
 
+# One-off non-interactive prompt for scripts and CI (streams to stdout, exits 0 on success)
+hadey -p "What is 2+2?"
+hadey -p "explain this error: $(cat error.log)"
+cat error.log | hadey -p -
+# Read-only tools run automatically; tools that need approval are skipped in this mode.
+
 # Launch with custom configuration and data paths
 hadey --config ~/.config/hades/custom.toml --data-dir ~/my_hades_storage
 
@@ -182,6 +188,7 @@ Options:
       --prune                Delete saved sessions that have no messages, then exit (active session is kept)
       --prune-older-than <DAYS>  Also delete sessions inactive for more than DAYS days (implies --prune)
   -s, --session <SESSION_ID> Resume an existing conversation session by ID
+  -p, --prompt <TEXT>        Run one prompt non-interactively, stream the answer to stdout and exit ("-" reads stdin)
   -h, --help                 Print help
   -V, --version              Print version
 ```
@@ -196,6 +203,7 @@ Open the interactive model picker inside HADES by typing `/model` in the prompt:
 1. Install and start Ollama (`ollama serve` or system daemon).
 2. Pull your preferred models: `ollama pull llama3.2` or `ollama pull deepseek-r1:7b`.
 3. Select `/model` -> **Ollama** in HADES. All local models appear automatically.
+4. Long local generations are never cut off while tokens are flowing. If a large model takes more than 10 minutes to load or emit its first token, raise `local_stream_idle_timeout_secs` under `[provider]` in `config.toml`.
 
 ### 2. OpenAI
 1. Obtain an API key from [platform.openai.com](https://platform.openai.com).
@@ -244,20 +252,21 @@ Type `/` in the prompt input field to activate the command palette:
 | :--- | :--- | :--- |
 | `/help` | None | Display modal listing all available keyboard shortcuts and slash commands. |
 | `/model` | None | Open model picker to switch AI providers and target models. |
-| `/tools` | None | Inspect registry of 51 built-in agent tools and external MCP tools. |
+| `/tools` | None | Inspect registry of 52 built-in agent tools and external MCP tools. |
 | `/browser`| None | Inspect web intelligence status, detected browser binary, and active tabs. |
 | `/mcp` | None | Inspect configured Model Context Protocol (MCP) servers, tools, and diagnostics. |
 | `/permissions` | None | View security rules, permission scopes, and risk levels for active session. |
 | `/workspace` | None | View active workspace root directory path and detected project metadata. |
 | `/sessions` | `prune [days]` | Open session manager to view, rename, switch, or delete saved conversations. `/sessions prune` removes empty sessions; `/sessions prune 30` also removes sessions inactive for 30+ days. The current session is never removed. |
 | `/new` | None | Create a new isolated conversation session. |
+| `/clear` | None | Clear the conversation and reset model context while keeping the current session. |
 | `/switch` | None | Quick-switch to a recent conversation session. |
 | `/status` | None | View active model status, system health, context token usage, and storage stats. |
 | `/exit` | None | Save session state and exit HADES cleanly. |
 
 ---
 
-## Built-in Agent Tools Reference (51 Tools)
+## Built-in Agent Tools Reference (52 Tools)
 
 ### Core System & Filesystem Tools (`hades-tools`)
 
@@ -269,6 +278,7 @@ Type `/` in the prompt input field to activate the command palette:
 | | `filesystem.create` | Low | Create empty files or directories within workspace sandbox. |
 | | `filesystem.delete` | High | Delete specified workspace files *(Requires confirmation)*. |
 | | `filesystem.list` | Safe | List directory trees and file metadata within workspace. |
+| | `filesystem.search` | Safe | Regex or literal content search across workspace files with line numbers and snippets. |
 | **Workspace** | `workspace.info` | Safe | Retrieve project name, language detection, and structure details. |
 | | `workspace.scan` | Safe | Scan workspace tree for configuration files and build manifests. |
 | | `workspace.dependencies` | Safe | Parse package manifests (Cargo.toml, package.json, pyproject.toml, go.mod). |
@@ -341,6 +351,14 @@ show_status_bar = true
 [model]
 provider_id = "groq"
 model_id = "llama-3.3-70b-versatile"
+
+# Provider Network Timeouts (seconds, 0 disables a timeout)
+[provider]
+connect_timeout_secs = 10              # Fast detection of offline/unreachable servers
+cloud_request_timeout_secs = 300       # Total limit for non-streaming cloud requests
+cloud_stream_idle_timeout_secs = 120   # Max silence between streamed chunks (cloud)
+local_request_timeout_secs = 0         # Disabled: slow local inference is never cut off
+local_stream_idle_timeout_secs = 600   # Max silence between chunks, incl. model load (Ollama)
 
 # Browser Sidecar & Web Settings
 [browser]
