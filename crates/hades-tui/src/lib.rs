@@ -15,7 +15,7 @@ pub use prompt::PromptManager;
 pub use runner::TuiRunner;
 pub use state::{ChatTurn, TuiState};
 pub use terminal::{init_modal_terminal, init_terminal, leave_modal_terminal, restore_terminal};
-pub use theme::HadesTheme;
+pub use theme::{HadesTheme, ThemePalette};
 
 #[cfg(test)]
 mod tests {
