@@ -15,6 +15,7 @@ use hades_core::{AppState, HadesApp};
 
 /// Main draw entry point dispatching view rendering with clean full-height conversation layout.
 pub fn render(frame: &mut Frame, app: &HadesApp, state: &mut TuiState) {
+    HadesTheme::set_active(&app.config().general.theme);
     let size = frame.area();
     if size.width < 10 || size.height < 5 {
         // Guard against degenerate terminal sizes during extreme resize
@@ -98,6 +99,8 @@ pub fn render(frame: &mut Frame, app: &HadesApp, state: &mut TuiState) {
         AppState::McpSetup => render_mcp_setup(frame, state, size),
         _ => {}
     }
+
+    HadesTheme::apply_to_buffer(frame.buffer_mut());
 }
 
 /// Helper formatting and word-wrapping turn texts with tree-branch indentations.

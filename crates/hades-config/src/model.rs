@@ -95,6 +95,11 @@ pub struct GeneralConfig {
     /// Default interaction mode (e.g., "simple").
     #[serde(default = "default_mode")]
     pub default_mode: String,
+
+    /// Terminal color palette (`fire`, `matrix`, `cyan`, or `monochrome`).
+    /// Unknown names are accepted and rendered with the `fire` palette.
+    #[serde(default = "default_terminal_theme")]
+    pub theme: String,
 }
 
 fn default_app_name() -> String {
@@ -105,11 +110,16 @@ fn default_mode() -> String {
     "simple".to_string()
 }
 
+fn default_terminal_theme() -> String {
+    "fire".to_string()
+}
+
 impl Default for GeneralConfig {
     fn default() -> Self {
         Self {
             app_name: default_app_name(),
             default_mode: default_mode(),
+            theme: default_terminal_theme(),
         }
     }
 }
@@ -124,6 +134,11 @@ impl GeneralConfig {
         if self.default_mode.trim().is_empty() {
             return Err(ConfigError::Validation(
                 "Default mode cannot be empty".to_string(),
+            ));
+        }
+        if self.theme.trim().is_empty() {
+            return Err(ConfigError::Validation(
+                "Terminal theme cannot be empty".to_string(),
             ));
         }
         Ok(())
