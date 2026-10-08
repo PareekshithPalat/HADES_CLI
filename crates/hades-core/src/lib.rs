@@ -8,8 +8,8 @@ pub mod state;
 
 pub use app::{HadesApp, APP_VERSION};
 pub use command::{
-    Command, CommandContext, CommandInfo, CommandOutput, CommandRegistry, DebugCommand,
-    ExitCommand, ExportCommand, HelpCommand, HelpEntry, ImportCommand, ModelCommand,
+    ClearCommand, Command, CommandContext, CommandInfo, CommandOutput, CommandRegistry,
+    DebugCommand, ExitCommand, ExportCommand, HelpCommand, HelpEntry, ImportCommand, ModelCommand,
     NewSessionCommand, NotifyCommand, PaletteItem, SessionsCommand, StatusCommand, StatusInfo,
     SubcommandInfo, SwitchCommand,
 };
@@ -692,5 +692,50 @@ mod tests {
         assert!(tools.iter().any(|t| t.function.name == "filesystem.list"));
         assert!(tools.iter().any(|t| t.function.name == "filesystem.create"));
         assert!(tools.iter().any(|t| t.function.name == "shell.execute"));
+    }
+
+    #[tokio::test]
+    async fn test_clear_resets_conversation_but_keeps_session() {
+        let (mut app, _dir) = create_test_app();
+        app.init().expect("init");
+        app.init_session(None).await.expect("init session");
+
+        let sid = app.active_session().expect("session").metadata.id.clone();
+        app.rename_session(&sid, "Debugging parser")
+            .await
+            .expect("rename");
+        {
+            let session = app.active_session_mut().expect("session");
+            session.add_message(Message::user(&sid, "first question"));
+            session.add_message(Message::assistant(&sid, "first answer", None, None));
+        }
+        app.save_active_session().await.expect("save");
+
+        let output = app.execute_command("/clear").expect("execute /clear");
+        assert_eq!(output, CommandOutput::ClearSession);
+        app.clear_active_session().await.expect("clear session");
+
+        let session = app.active_session().expect("session");
+        assert_eq!(session.metadata.id, sid);
+        assert_eq!(session.metadata.title, "Debugging parser");
+        assert!(session.messages.is_empty());
+        assert_eq!(session.metadata.message_count, 0);
+
+        let stored = app
+            .session_repository()
+            .get_session(&sid)
+            .await
+            .expect("load")
+            .expect("session persisted");
+        assert!(stored.messages.is_empty());
+        assert_eq!(stored.metadata.title, "Debugging parser");
+
+        let help = app.execute_command("/help").expect("help");
+        match help {
+            CommandOutput::Help(entries) => {
+                assert!(entries.iter().any(|e| e.name == "/clear"));
+            }
+            other => panic!("expected help, got {other:?}"),
+        }
     }
 }

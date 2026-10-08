@@ -1117,6 +1117,19 @@ impl HadesApp {
         Ok(record)
     }
 
+    /// Clears all messages from the active session so the next prompt starts with a fresh
+    /// model context, while keeping the session id, title and metadata.
+    pub async fn clear_active_session(&mut self) -> Result<(), CoreError> {
+        let session = self
+            .active_session
+            .as_mut()
+            .ok_or_else(|| CoreError::Runtime("No active session to clear".to_string()))?;
+        session.clear_messages();
+        self.session_repository.save_session(session).await?;
+        self.last_request_plan = None;
+        Ok(())
+    }
+
     /// Switches the active conversation session to the specified session ID.
     pub async fn switch_session(&mut self, session_id: &str) -> Result<SessionRecord, CoreError> {
         let _ = self.save_active_session().await;

@@ -251,6 +251,7 @@ Type `/` in the prompt input field to activate the command palette:
 | `/workspace` | None | View active workspace root directory path and detected project metadata. |
 | `/sessions` | `prune [days]` | Open session manager to view, rename, switch, or delete saved conversations. `/sessions prune` removes empty sessions; `/sessions prune 30` also removes sessions inactive for 30+ days. The current session is never removed. |
 | `/new` | None | Create a new isolated conversation session. |
+| `/clear` | None | Clear the conversation and reset model context while keeping the current session. |
 | `/switch` | None | Quick-switch to a recent conversation session. |
 | `/status` | None | View active model status, system health, context token usage, and storage stats. |
 | `/exit` | None | Save session state and exit HADES cleanly. |
