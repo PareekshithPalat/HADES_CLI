@@ -4,6 +4,7 @@ pub mod edit;
 pub mod list;
 pub mod mkdir;
 pub mod read;
+pub mod search;
 pub mod write;
 
 pub use create::FileSystemCreateTool;
@@ -12,4 +13,5 @@ pub use edit::FileSystemEditTool;
 pub use list::FileSystemListTool;
 pub use mkdir::FileSystemMkdirTool;
 pub use read::FileSystemReadTool;
+pub use search::FileSystemSearchTool;
 pub use write::FileSystemWriteTool;

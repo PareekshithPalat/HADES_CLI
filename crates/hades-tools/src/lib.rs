@@ -16,7 +16,7 @@ pub use definition::{DynTool, RiskLevel, Tool, ToolCall, ToolDefinition, ToolRes
 pub use error::ToolError;
 pub use filesystem::{
     FileSystemCreateTool, FileSystemDeleteTool, FileSystemEditTool, FileSystemListTool,
-    FileSystemMkdirTool, FileSystemReadTool, FileSystemWriteTool,
+    FileSystemMkdirTool, FileSystemReadTool, FileSystemSearchTool, FileSystemWriteTool,
 };
 pub use registry::ToolRegistry;
 pub use security::{
@@ -41,9 +41,10 @@ mod tests {
     #[test]
     fn test_default_registry_contains_all_standard_tools() {
         let registry = ToolRegistry::default_registry();
-        assert_eq!(registry.count(), 29);
+        assert_eq!(registry.count(), 30);
         assert!(registry.contains("filesystem.list"));
         assert!(registry.contains("filesystem.read"));
+        assert!(registry.contains("filesystem.search"));
         assert!(registry.contains("filesystem.create"));
         assert!(registry.contains("filesystem.write"));
         assert!(registry.contains("filesystem.edit"));
