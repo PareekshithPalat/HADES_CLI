@@ -1046,7 +1046,12 @@ impl HadesApp {
             }
         }
 
-        // Persist tool message to active session
+        self.persist_tool_result(&result).await;
+        result
+    }
+
+    /// Persists a tool result message to the active session so the next model turn can see it.
+    pub async fn persist_tool_result(&mut self, result: &ToolResult) {
         if let Some(ref mut session) = self.active_session {
             let session_id = session.metadata.id.clone();
             let tool_output = if !result.output.is_empty() {
@@ -1060,8 +1065,13 @@ impl HadesApp {
             session.add_message(msg);
             let _ = self.session_repository.save_session(session).await;
         }
+    }
 
-        result
+    /// Enables or disables sound notifications for this run without changing the saved config.
+    pub fn set_notifications_enabled(&mut self, enabled: bool) {
+        let mut config = self.notification_service.config().clone();
+        config.enabled = enabled;
+        self.notification_service.update_config(config);
     }
 
     /// Transitions application state if allowed, publishing state change event.

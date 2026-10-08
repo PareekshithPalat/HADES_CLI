@@ -27,6 +27,11 @@ pub struct CliArgs {
     #[arg(short, long, value_name = "SESSION_ID")]
     pub session: Option<String>,
 
+    /// Run a single prompt non-interactively, stream the answer to stdout and exit.
+    /// Pass `-` to read the prompt from stdin.
+    #[arg(short, long, value_name = "TEXT", allow_hyphen_values = true)]
+    pub prompt: Option<String>,
+
     /// Optional subcommand
     #[command(subcommand)]
     pub command: Option<Commands>,
@@ -41,4 +46,28 @@ pub enum Commands {
         #[arg(short, long, value_name = "DIR")]
         workspace: Option<PathBuf>,
     },
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_prompt_flag_parses_short_and_long_forms() {
+        let short = CliArgs::try_parse_from(["hades", "-p", "What is 2+2?"]).unwrap();
+        assert_eq!(short.prompt.as_deref(), Some("What is 2+2?"));
+
+        let long = CliArgs::try_parse_from(["hades", "--prompt", "explain", "-s", "abc"]).unwrap();
+        assert_eq!(long.prompt.as_deref(), Some("explain"));
+        assert_eq!(long.session.as_deref(), Some("abc"));
+    }
+
+    #[test]
+    fn test_prompt_flag_accepts_stdin_marker_and_is_optional() {
+        let stdin = CliArgs::try_parse_from(["hades", "-p", "-"]).unwrap();
+        assert_eq!(stdin.prompt.as_deref(), Some("-"));
+
+        let none = CliArgs::try_parse_from(["hades"]).unwrap();
+        assert_eq!(none.prompt, None);
+    }
 }
