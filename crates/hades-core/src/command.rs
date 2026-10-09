@@ -583,7 +583,7 @@ impl Command for ModelCommand {
     }
 
     fn aliases(&self) -> &'static [&'static str] {
-        &["/provider", "/models"]
+        &["/m", "/provider", "/models"]
     }
 
     fn description(&self) -> &'static str {
@@ -664,7 +664,7 @@ impl Command for SessionsCommand {
     }
 
     fn aliases(&self) -> &'static [&'static str] {
-        &["/history"]
+        &["/s", "/history"]
     }
 
     fn description(&self) -> &'static str {
@@ -727,6 +727,10 @@ pub struct ToolsCommand;
 impl Command for ToolsCommand {
     fn name(&self) -> &'static str {
         "/tools"
+    }
+
+    fn aliases(&self) -> &'static [&'static str] {
+        &["/t"]
     }
 
     fn description(&self) -> &'static str {
@@ -1779,8 +1783,11 @@ impl CommandRegistry {
             }
         }
 
-        // 4. Prefix match against top-level command names and aliases:
+        // 4. Prefix match against top-level command names and aliases. A command whose
+        // name or alias equals the query exactly (e.g. `/s` -> `/sessions`) is listed
+        // first so it is the highlighted entry.
         let mut prefix_matches = Vec::new();
+        let mut exact_count = 0;
         for cmd in &self.commands {
             let name_lower = cmd.name().to_lowercase();
             let matches_name = name_lower.starts_with(&query);
@@ -1788,17 +1795,28 @@ impl CommandRegistry {
                 .aliases()
                 .iter()
                 .any(|a| a.to_lowercase().starts_with(&query));
+            let is_exact =
+                name_lower == query || cmd.aliases().iter().any(|a| a.to_lowercase() == query);
 
             if matches_name || matches_alias {
-                prefix_matches.push(PaletteItem {
-                    display_name: cmd.name().to_string(),
-                    description: cmd.description().to_string(),
-                    execution_text: cmd.name().to_string(),
-                    is_subcommand: false,
-                    has_subcommands: !cmd.subcommands().is_empty(),
-                    parent_command: None,
-                    requires_args: false,
-                });
+                let index = if is_exact {
+                    exact_count += 1;
+                    exact_count - 1
+                } else {
+                    prefix_matches.len()
+                };
+                prefix_matches.insert(
+                    index,
+                    PaletteItem {
+                        display_name: cmd.name().to_string(),
+                        description: cmd.description().to_string(),
+                        execution_text: cmd.name().to_string(),
+                        is_subcommand: false,
+                        has_subcommands: !cmd.subcommands().is_empty(),
+                        parent_command: None,
+                        requires_args: false,
+                    },
+                );
             }
         }
 
@@ -1943,6 +1961,32 @@ mod tests {
         assert!(report.starts_with("Pruned 1 session(s)"));
         assert!(report.contains("inactive for more than 30 days"));
         assert!(report.contains("abc  Old chat"));
+    }
+
+    #[test]
+    fn test_shorthand_aliases_resolve_and_rank_first_in_palette() {
+        let registry = CommandRegistry::with_defaults();
+        for (alias, command) in [
+            ("/m", "/model"),
+            ("/s", "/sessions"),
+            ("/h", "/help"),
+            ("/t", "/tools"),
+        ] {
+            let found = registry.find(alias).expect("alias registered");
+            assert_eq!(found.name(), command, "{alias} executes {command}");
+
+            let items = registry.filter_palette(alias, None);
+            assert_eq!(
+                items.first().map(|i| i.execution_text.as_str()),
+                Some(command),
+                "{alias} highlights {command} in the palette"
+            );
+        }
+
+        // Other prefix matches are still listed after the exact alias hit.
+        let items = registry.filter_palette("/s", None);
+        assert!(items.iter().any(|i| i.execution_text == "/status"));
+        assert!(items.iter().any(|i| i.execution_text == "/switch"));
     }
 
     #[test]

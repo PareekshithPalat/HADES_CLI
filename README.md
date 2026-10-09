@@ -253,18 +253,18 @@ Open the interactive model picker inside HADES by typing `/model` in the prompt:
 
 ## Slash Commands Reference
 
-Type `/` in the prompt input field to activate the command palette:
+Type `/` in the prompt input field to activate the command palette. Shorthand aliases are shown in parentheses; typing one highlights its command:
 
 | Command | Arguments | Description |
 | :--- | :--- | :--- |
-| `/help` | None | Display modal listing all available keyboard shortcuts and slash commands. |
-| `/model` | None | Open model picker to switch AI providers and target models. |
-| `/tools` | None | Inspect registry of 52 built-in agent tools and external MCP tools. |
+| `/help` (`/h`) | None | Display modal listing all available keyboard shortcuts and slash commands. |
+| `/model` (`/m`) | None | Open model picker to switch AI providers and target models. |
+| `/tools` (`/t`) | None | Inspect registry of 52 built-in agent tools and external MCP tools. |
 | `/browser`| None | Inspect web intelligence status, detected browser binary, and active tabs. |
 | `/mcp` | None | Inspect configured Model Context Protocol (MCP) servers, tools, and diagnostics. |
 | `/permissions` | None | View security rules, permission scopes, and risk levels for active session. |
 | `/workspace` | None | View active workspace root directory path and detected project metadata. |
-| `/sessions` | `prune [days]` | Open session manager to view, rename, switch, or delete saved conversations. `/sessions prune` removes empty sessions; `/sessions prune 30` also removes sessions inactive for 30+ days. The current session is never removed. |
+| `/sessions` (`/s`) | `prune [days]` | Open session manager to view, rename, switch, or delete saved conversations. `/sessions prune` removes empty sessions; `/sessions prune 30` also removes sessions inactive for 30+ days. The current session is never removed. |
 | `/new` | None | Create a new isolated conversation session. |
 | `/clear` | None | Clear the conversation and reset model context while keeping the current session. |
 | `/switch` | None | Quick-switch to a recent conversation session. |

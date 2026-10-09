@@ -126,6 +126,21 @@ mod tests {
     }
 
     #[test]
+    fn test_palette_shorthand_alias_opens_highlighted_command() {
+        let (mut app, _dir) = create_test_app();
+        let mut state = TuiState::new();
+
+        for key in [KeyCode::Char('/'), KeyCode::Char('s')] {
+            InputHandler::handle_key_event(make_key(key), &mut app, &mut state).expect("type");
+        }
+        assert_eq!(state.selected_palette_index, 0);
+
+        let action = InputHandler::handle_key_event(make_key(KeyCode::Enter), &mut app, &mut state)
+            .expect("submit /s");
+        assert_eq!(action, KeyActionResult::OpenSessionPicker);
+    }
+
+    #[test]
     fn test_sessions_prune_command_returns_prune_action() {
         let (mut app, _dir) = create_test_app();
         let mut state = TuiState::new();
