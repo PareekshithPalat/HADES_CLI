@@ -201,6 +201,61 @@ scroll_speed = 7
             )
     }
 
+    /// 2-byte characters only, so the old byte-offset truncation points (13, 21, 27, 33)
+    /// all fall inside a character.
+    const NON_ASCII_TEXT: &str = "éééééééééééééééééééééééééééééééééééééééééééé";
+
+    #[test]
+    fn test_truncate_display_counts_characters() {
+        assert_eq!(ui::truncate_display("short", 10), "short");
+        assert_eq!(ui::truncate_display("abcdefghijkl", 10), "abcdefg...");
+        assert_eq!(
+            ui::truncate_display(&"é".repeat(12), 10),
+            format!("{}...", "é".repeat(7))
+        );
+        assert_eq!(ui::truncate_display("日本語のテキスト", 5), "日本...");
+        assert_eq!(ui::truncate_display("🔱🔱🔱🔱", 4), "🔱🔱🔱🔱");
+    }
+
+    #[test]
+    fn test_session_picker_handles_non_ascii_titles() {
+        let (mut app, _dir) = create_test_app();
+        app.transition_to(AppState::SessionSelect).expect("picker");
+        let mut state = TuiState::new();
+        let mut meta = hades_storage::SessionMetadata::new(
+            "abc12345",
+            NON_ASCII_TEXT,
+            None,
+            Some("éééééééééééééééééééé".to_string()),
+        );
+        meta.message_count = 2;
+        state.sessions = vec![meta];
+
+        let text = rendered_text(&app, &mut state);
+        assert!(text.contains("ééé"));
+        assert!(text.contains("..."));
+    }
+
+    #[test]
+    fn test_copy_select_and_delete_confirm_handle_non_ascii_text() {
+        let (mut app, _dir) = create_test_app();
+        let mut state = TuiState::new();
+        state
+            .turns
+            .push(ChatTurn::with_response(NON_ASCII_TEXT, NON_ASCII_TEXT));
+        app.transition_to(AppState::CopySelect).expect("copy mode");
+        let text = rendered_text(&app, &mut state);
+        assert!(text.contains("ééé"));
+
+        app.transition_to(AppState::Running).expect("running");
+        app.transition_to(AppState::SessionSelect).expect("picker");
+        app.transition_to(AppState::SessionDeleteConfirm)
+            .expect("delete confirm");
+        state.delete_session_title = NON_ASCII_TEXT.to_string();
+        let text = rendered_text(&app, &mut state);
+        assert!(text.contains("ééé"));
+    }
+
     #[test]
     fn test_session_tag_badges_and_toast() {
         assert_eq!(ui::session_tag_badges(&[]), "");
