@@ -11,7 +11,7 @@ use crate::cli::CliArgs;
 /// Name the completion script registers for.
 ///
 /// The binary is installed as `hades` by cargo and as `hadey` by the npm package, so
-/// the name the user actually typed (argv[0]) is used, falling back to `hades`.
+/// the name the user actually typed (`argv[0]`) is used, falling back to `hades`.
 pub fn invoked_bin_name() -> String {
     std::env::args_os()
         .next()
