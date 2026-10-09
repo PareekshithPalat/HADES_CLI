@@ -246,6 +246,7 @@ Open the interactive model picker inside HADES by typing `/model` in the prompt:
 | `Up` / `Down` | Viewport | Scroll conversation view line-by-line. |
 | `PageUp` / `PageDn` | Viewport | Scroll conversation view by full screen page. |
 | `Home` / `End` | Viewport | Jump to beginning or end of conversation history. |
+| `Ctrl + L` | Viewport (also while streaming) | Jump to the latest output and resume auto-scroll. |
 | `Enter` | Modals & Dialogs | Confirm modal selection or execute selected palette action. |
 | `Esc` | Modals & Dialogs | Dismiss modal dialog and return focus to chat. |
 

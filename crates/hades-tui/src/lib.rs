@@ -125,6 +125,55 @@ mod tests {
         );
     }
 
+    fn scrolled_up_state() -> TuiState {
+        let mut state = TuiState::new();
+        state.update_geometry(100, 20);
+        state.scroll_offset = 10;
+        state.auto_scroll_to_bottom = false;
+        state.has_new_content_below = true;
+        state.prompt_input = "draft".to_string();
+        state.prompt_cursor_position = 5;
+        state
+    }
+
+    #[test]
+    fn test_ctrl_l_jumps_to_bottom_without_typing() {
+        let (mut app, _dir) = create_test_app();
+        let mut state = scrolled_up_state();
+
+        let action =
+            InputHandler::handle_key_event(make_ctrl_key(KeyCode::Char('l')), &mut app, &mut state)
+                .expect("ctrl+l");
+
+        assert_eq!(action, KeyActionResult::Handled);
+        assert_eq!(state.scroll_offset, state.max_scroll_offset());
+        assert_eq!(state.scroll_offset, 80);
+        assert!(state.auto_scroll_to_bottom);
+        assert!(!state.has_new_content_below);
+        assert_eq!(state.prompt_input, "draft", "Ctrl+L must not insert 'l'");
+    }
+
+    #[test]
+    fn test_ctrl_l_works_while_streaming() {
+        let (mut app, _dir) = create_test_app();
+        app.transition_to(AppState::AiStreaming).expect("streaming");
+        let mut state = scrolled_up_state();
+
+        InputHandler::handle_key_event(make_ctrl_key(KeyCode::Char('l')), &mut app, &mut state)
+            .expect("ctrl+l");
+
+        assert_eq!(state.scroll_offset, 80);
+        assert!(state.auto_scroll_to_bottom);
+        assert_eq!(app.state(), AppState::AiStreaming);
+    }
+
+    #[test]
+    fn test_help_lists_ctrl_l() {
+        let (mut app, _dir) = create_test_app();
+        let help = app.execute_command("/help").expect("help").to_string();
+        assert!(help.contains("Ctrl+L"));
+    }
+
     #[test]
     fn test_palette_shorthand_alias_opens_highlighted_command() {
         let (mut app, _dir) = create_test_app();

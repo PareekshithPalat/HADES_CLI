@@ -137,6 +137,11 @@ impl fmt::Display for CommandOutput {
                     "  {:<14} Jump to top / bottom of conversation",
                     "Home / End"
                 )?;
+                writeln!(
+                    f,
+                    "  {:<14} Jump to latest output and resume auto-scroll",
+                    "Ctrl+L"
+                )?;
                 writeln!(f, "  {:<14} Dismiss active modal / Close palette", "Esc")?;
                 Ok(())
             }

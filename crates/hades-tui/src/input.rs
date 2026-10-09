@@ -85,6 +85,19 @@ impl InputHandler {
             return Ok(KeyActionResult::Quit);
         }
 
+        // Ctrl+L: jump to the latest output (terminal "refresh" convention). Also active
+        // while a response is generating, which is when the viewport most often lags behind.
+        if key_event.modifiers.contains(KeyModifiers::CONTROL)
+            && matches!(key_event.code, KeyCode::Char('l') | KeyCode::Char('L'))
+            && matches!(
+                app.state(),
+                AppState::Running | AppState::AiThinking | AppState::AiStreaming
+            )
+        {
+            tui_state.scroll_to_bottom();
+            return Ok(KeyActionResult::Handled);
+        }
+
         match app.state() {
             AppState::Running => Self::handle_running(key_event, app, tui_state),
             AppState::CommandPalette => Self::handle_command_palette(key_event, app, tui_state),
