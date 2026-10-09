@@ -12,7 +12,7 @@ use hades_events::{EventBus, HadesEvent};
 use hades_mcp::McpServerManager;
 use hades_provider::{
     CompletionRequest, CompletionResponse, Credential, CredentialBackend, FileCredentialBackend,
-    Model, ModelManager, OpenAiProvider, StreamResult, Usage,
+    ModelManager, OpenAiProvider, ProviderVerification, StreamResult, Usage,
 };
 use hades_storage::{
     FileSessionRepository, Message, PruneCriteria, SessionMetadata, SessionRecord,
@@ -1319,7 +1319,7 @@ impl HadesApp {
         provider_id: &str,
         model_id: &str,
         credential: &Credential,
-    ) -> Result<Model, CoreError> {
+    ) -> Result<ProviderVerification, CoreError> {
         info!(provider = %provider_id, model = %model_id, "Switching model for current session");
 
         // 1. Verify model access
@@ -1351,7 +1351,7 @@ impl HadesApp {
         provider_id: &str,
         model_id: &str,
         credential: &Credential,
-    ) -> Result<Model, CoreError> {
+    ) -> Result<ProviderVerification, CoreError> {
         info!(provider = %provider_id, model = %model_id, "Verifying and persisting model selection");
 
         self.event_bus
@@ -1361,9 +1361,9 @@ impl HadesApp {
             });
 
         // 1. Verify with provider
-        let verified_model = match self
+        let verification = match self
             .model_manager
-            .verify_provider_and_model(provider_id, model_id, credential)
+            .verify_with_latency(provider_id, model_id, credential)
             .await
         {
             Ok(m) => m,
@@ -1404,7 +1404,7 @@ impl HadesApp {
         self.event_bus
             .publish(HadesEvent::model_loaded(provider_id, model_id));
 
-        Ok(verified_model)
+        Ok(verification)
     }
 
     /// Generates the system instruction prompt identifying Hades and explaining workspace and tool bounds.

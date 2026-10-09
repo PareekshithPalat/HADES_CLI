@@ -15,7 +15,7 @@ pub use credential::{
     Credential, CredentialBackend, CredentialError, CredentialSecret, FileCredentialBackend,
 };
 pub use error::ProviderError;
-pub use manager::ModelManager;
+pub use manager::{ModelManager, ProviderVerification};
 pub use model::{Model, PricingMetadata};
 pub use provider::{Provider, ProviderMetadata};
 pub use request::{
@@ -256,6 +256,95 @@ mod tests {
             ];
             Ok(Box::pin(futures::stream::iter(chunks)))
         }
+    }
+
+    #[tokio::test]
+    async fn test_verify_with_latency_measures_auth_round_trip() {
+        /// Delegates to `MockProvider`, delaying authentication like a slow network.
+        struct SlowAuthProvider {
+            inner: MockProvider,
+            delay: std::time::Duration,
+        }
+
+        #[async_trait]
+        impl Provider for SlowAuthProvider {
+            fn id(&self) -> &str {
+                self.inner.id()
+            }
+            fn metadata(&self) -> &ProviderMetadata {
+                self.inner.metadata()
+            }
+            async fn authenticate(&self, c: &Credential) -> Result<(), ProviderError> {
+                tokio::time::sleep(self.delay).await;
+                self.inner.authenticate(c).await
+            }
+            async fn list_models(&self, c: &Credential) -> Result<Vec<Model>, ProviderError> {
+                self.inner.list_models(c).await
+            }
+            async fn get_model(&self, id: &str, c: &Credential) -> Result<Model, ProviderError> {
+                self.inner.get_model(id, c).await
+            }
+            fn capabilities(&self, id: &str) -> ModelCapabilities {
+                self.inner.capabilities(id)
+            }
+            async fn complete(
+                &self,
+                r: CompletionRequest,
+                c: &Credential,
+            ) -> Result<CompletionResponse, ProviderError> {
+                self.inner.complete(r, c).await
+            }
+            async fn complete_stream(
+                &self,
+                r: CompletionRequest,
+                c: &Credential,
+            ) -> Result<StreamResult, ProviderError> {
+                self.inner.complete_stream(r, c).await
+            }
+        }
+
+        let slow = |fail: bool| SlowAuthProvider {
+            inner: MockProvider {
+                metadata: ProviderMetadata {
+                    id: "slow".to_string(),
+                    name: "Slow".to_string(),
+                    description: "Slow".to_string(),
+                    default_endpoint: None,
+                    supports_dynamic_model_discovery: true,
+                    requires_api_key: true,
+                    is_local: false,
+                },
+                should_fail_auth: fail,
+                models: vec![Model::new("slow-model", "slow", "Slow Model")],
+                mock_response: String::new(),
+            },
+            delay: std::time::Duration::from_millis(60),
+        };
+
+        let mut manager = ModelManager::new();
+        manager.register_provider(Arc::new(slow(false)));
+        let cred = Credential::with_api_key("slow", "key");
+
+        let verification = manager
+            .verify_with_latency("slow", "slow-model", &cred)
+            .await
+            .expect("verified");
+        assert_eq!(verification.model.id, "slow-model");
+        assert!(verification.latency >= std::time::Duration::from_millis(60));
+        assert!(verification.latency_ms() >= 60);
+        assert!(verification.latency < std::time::Duration::from_secs(5));
+
+        manager.register_provider(Arc::new(slow(true)));
+        assert!(matches!(
+            manager
+                .verify_with_latency("slow", "slow-model", &cred)
+                .await,
+            Err(ProviderError::AuthenticationFailed { .. })
+        ));
+        assert!(manager
+            .verify_with_latency("missing", "x", &cred)
+            .await
+            .is_err());
     }
 
     #[tokio::test]

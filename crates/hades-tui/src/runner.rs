@@ -320,9 +320,14 @@ impl TuiRunner {
                                             )
                                             .await
                                         {
-                                            Ok(_) => {
+                                            Ok(verification) => {
                                                 tui_state.clear_error();
                                                 tui_state.is_model_switch_flow = false;
+                                                tui_state.show_toast(verified_toast(
+                                                    &provider_id,
+                                                    &model_id,
+                                                    &verification,
+                                                ));
                                                 app.transition_to(AppState::Running)?;
                                             }
                                             Err(e) => {
@@ -340,8 +345,13 @@ impl TuiRunner {
                                             )
                                             .await
                                         {
-                                            Ok(_) => {
+                                            Ok(verification) => {
                                                 tui_state.clear_error();
+                                                tui_state.show_toast(verified_toast(
+                                                    &provider_id,
+                                                    &model_id,
+                                                    &verification,
+                                                ));
                                                 app.transition_to(AppState::Running)?;
                                             }
                                             Err(e) => {
@@ -481,6 +491,18 @@ impl TuiRunner {
 
         loop_result
     }
+}
+
+/// Toast shown after a provider/model passes verification, including the round-trip latency.
+pub(crate) fn verified_toast(
+    provider_id: &str,
+    model_id: &str,
+    verification: &hades_provider::ProviderVerification,
+) -> String {
+    format!(
+        "✓ Verified {provider_id}/{model_id} ({}ms)",
+        verification.latency_ms()
+    )
 }
 
 /// Runs a single streaming request pass, accumulating text and tool calls.

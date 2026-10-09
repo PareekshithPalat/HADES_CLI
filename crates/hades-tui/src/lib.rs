@@ -202,6 +202,18 @@ scroll_speed = 7
     }
 
     #[test]
+    fn test_verified_toast_shows_latency_in_ms() {
+        let verification = hades_provider::ProviderVerification {
+            model: Model::new("llama-3.3-70b", "groq", "Llama"),
+            latency: std::time::Duration::from_micros(42_700),
+        };
+        assert_eq!(
+            runner::verified_toast("groq", "llama-3.3-70b", &verification),
+            "✓ Verified groq/llama-3.3-70b (42ms)"
+        );
+    }
+
+    #[test]
     fn test_format_thousands() {
         assert_eq!(ui::format_thousands(0), "0");
         assert_eq!(ui::format_thousands(999), "999");
