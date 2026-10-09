@@ -12,7 +12,7 @@ use hades_events::{EventBus, HadesEvent};
 use hades_mcp::McpServerManager;
 use hades_provider::{
     CompletionRequest, CompletionResponse, Credential, CredentialBackend, FileCredentialBackend,
-    Model, ModelManager, OpenAiProvider, StreamResult, Usage,
+    ModelManager, OpenAiProvider, ProviderVerification, StreamResult, Usage,
 };
 use hades_storage::{
     FileSessionRepository, Message, PruneCriteria, SessionMetadata, SessionRecord,
@@ -1190,6 +1190,39 @@ impl HadesApp {
         Ok(record)
     }
 
+    /// Adds (`add = true`) or removes a tag on the active session and persists it.
+    /// Returns the session's tags after the change.
+    pub async fn set_active_session_tag(
+        &mut self,
+        tag: &str,
+        add: bool,
+    ) -> Result<Vec<String>, CoreError> {
+        let tag = hades_storage::normalize_tag(tag)
+            .ok_or_else(|| CoreError::Runtime(format!("Invalid tag '{tag}'")))?;
+        let session = self
+            .active_session
+            .as_mut()
+            .ok_or_else(|| CoreError::Runtime("No active session to tag".to_string()))?;
+
+        let changed = if add {
+            if session.metadata.tags.len() >= hades_storage::MAX_SESSION_TAGS
+                && !session.metadata.tags.contains(&tag)
+            {
+                return Err(CoreError::Runtime(format!(
+                    "A session can have at most {} tags",
+                    hades_storage::MAX_SESSION_TAGS
+                )));
+            }
+            session.metadata.add_tag(&tag)
+        } else {
+            session.metadata.remove_tag(&tag)
+        };
+        if changed {
+            self.session_repository.save_session(session).await?;
+        }
+        Ok(session.metadata.tags.clone())
+    }
+
     /// Deletes sessions matching `criteria`. The current in-memory session and the persisted
     /// active session are never removed. Returns the metadata of deleted sessions.
     pub async fn prune_sessions(
@@ -1319,7 +1352,7 @@ impl HadesApp {
         provider_id: &str,
         model_id: &str,
         credential: &Credential,
-    ) -> Result<Model, CoreError> {
+    ) -> Result<ProviderVerification, CoreError> {
         info!(provider = %provider_id, model = %model_id, "Switching model for current session");
 
         // 1. Verify model access
@@ -1351,7 +1384,7 @@ impl HadesApp {
         provider_id: &str,
         model_id: &str,
         credential: &Credential,
-    ) -> Result<Model, CoreError> {
+    ) -> Result<ProviderVerification, CoreError> {
         info!(provider = %provider_id, model = %model_id, "Verifying and persisting model selection");
 
         self.event_bus
@@ -1361,9 +1394,9 @@ impl HadesApp {
             });
 
         // 1. Verify with provider
-        let verified_model = match self
+        let verification = match self
             .model_manager
-            .verify_provider_and_model(provider_id, model_id, credential)
+            .verify_with_latency(provider_id, model_id, credential)
             .await
         {
             Ok(m) => m,
@@ -1404,7 +1437,7 @@ impl HadesApp {
         self.event_bus
             .publish(HadesEvent::model_loaded(provider_id, model_id));
 
-        Ok(verified_model)
+        Ok(verification)
     }
 
     /// Generates the system instruction prompt identifying Hades and explaining workspace and tool bounds.

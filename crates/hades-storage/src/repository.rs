@@ -359,6 +359,66 @@ mod tests {
     }
 
     #[test]
+    fn test_normalize_tag() {
+        use crate::model::normalize_tag;
+        assert_eq!(normalize_tag("bugfix").as_deref(), Some("bugfix"));
+        assert_eq!(normalize_tag(" [Refactor] ").as_deref(), Some("refactor"));
+        assert_eq!(normalize_tag("#Docs").as_deref(), Some("docs"));
+        assert_eq!(normalize_tag("v1.2_rc-1").as_deref(), Some("v1.2_rc-1"));
+        for invalid in ["", "  ", "[]", "two words", "semi;colon", &"x".repeat(25)] {
+            assert_eq!(normalize_tag(invalid), None, "{invalid:?} rejected");
+        }
+    }
+
+    #[test]
+    fn test_add_and_remove_tags() {
+        let mut meta = SessionMetadata::new("id", "title", None, None);
+        assert!(meta.add_tag("bugfix"));
+        assert!(!meta.add_tag("bugfix"), "duplicates ignored");
+        for i in 0..20 {
+            meta.add_tag(&format!("t{i}"));
+        }
+        assert_eq!(meta.tags.len(), crate::model::MAX_SESSION_TAGS);
+        assert!(meta.remove_tag("bugfix"));
+        assert!(!meta.remove_tag("bugfix"));
+    }
+
+    #[tokio::test]
+    async fn test_tags_persist_and_old_sessions_without_tags_still_load() {
+        let dir = tempdir().unwrap();
+        let repo = FileSessionRepository::with_dir(dir.path());
+
+        let mut record = repo.create_session(None, None, None).await.unwrap();
+        record.metadata.add_tag("review");
+        repo.save_session(&record).await.unwrap();
+        let loaded = repo
+            .get_session(&record.metadata.id)
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(loaded.metadata.tags, vec!["review".to_string()]);
+
+        // A session file written before tags existed has no `tags` key.
+        let mut legacy = serde_json::to_value(&record).unwrap();
+        legacy["metadata"].as_object_mut().unwrap().remove("tags");
+        legacy["metadata"]["id"] = serde_json::json!("legacy-session");
+        std::fs::write(
+            dir.path().join("legacy-session.json"),
+            serde_json::to_string(&legacy).unwrap(),
+        )
+        .unwrap();
+        let old = repo.get_session("legacy-session").await.unwrap().unwrap();
+        assert!(old.metadata.tags.is_empty());
+
+        // Untagged sessions do not write an empty `tags` key.
+        let untagged = repo.create_session(None, None, None).await.unwrap();
+        let raw =
+            std::fs::read_to_string(dir.path().join(format!("{}.json", untagged.metadata.id)))
+                .unwrap();
+        assert!(!raw.contains("\"tags\""));
+    }
+
+    #[test]
     fn test_prune_criteria_matching() {
         let now = chrono::Utc::now();
         let mut meta = SessionMetadata::new("id", "title", None, None);

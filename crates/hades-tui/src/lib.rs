@@ -125,6 +125,314 @@ mod tests {
         );
     }
 
+    fn create_test_app_with_config(config_toml: &str) -> (HadesApp, tempfile::TempDir) {
+        let dir = tempdir().expect("create temp dir");
+        let config_path = dir.path().join("config.toml");
+        std::fs::write(&config_path, config_toml).expect("write config");
+        let mut app = HadesApp::new(
+            hades_config::ConfigService::with_path(config_path),
+            hades_storage::StorageService::with_root(dir.path().join("data")),
+            hades_events::EventBus::new(),
+        );
+        app.init().expect("init app");
+        let _ = app.transition_to(AppState::Running);
+        (app, dir)
+    }
+
+    fn wheel_delta(app: &mut HadesApp) -> (usize, usize) {
+        let mut state = TuiState::new();
+        state.update_geometry(200, 20);
+        state.scroll_offset = 100;
+
+        InputHandler::handle_mouse_event(
+            make_mouse_scroll(MouseEventKind::ScrollUp),
+            app,
+            &mut state,
+        )
+        .expect("scroll up");
+        let up = 100 - state.scroll_offset;
+
+        InputHandler::handle_mouse_event(
+            make_mouse_scroll(MouseEventKind::ScrollDown),
+            app,
+            &mut state,
+        )
+        .expect("scroll down");
+        let down = state.scroll_offset - (100 - up);
+        (up, down)
+    }
+
+    #[test]
+    fn test_mouse_wheel_uses_configured_scroll_speed() {
+        let (mut default_app, _d1) = create_test_app_with_config("");
+        assert_eq!(wheel_delta(&mut default_app), (3, 3));
+
+        let (mut precise_app, _d2) = create_test_app_with_config(
+            "[general]
+scroll_speed = 1
+",
+        );
+        assert_eq!(wheel_delta(&mut precise_app), (1, 1));
+
+        let (mut fast_app, _d3) = create_test_app_with_config(
+            "[general]
+scroll_speed = 7
+",
+        );
+        assert_eq!(wheel_delta(&mut fast_app), (7, 7));
+    }
+
+    fn rendered_text(app: &HadesApp, state: &mut TuiState) -> String {
+        let mut terminal =
+            ratatui::Terminal::new(ratatui::backend::TestBackend::new(140, 30)).expect("terminal");
+        terminal
+            .draw(|frame| ui::render(frame, app, state))
+            .expect("draw frame");
+        let buffer = terminal.backend().buffer();
+        let width = buffer.area.width as usize;
+        buffer
+            .content
+            .chunks(width)
+            .map(|row| row.iter().map(|c| c.symbol()).collect::<String>())
+            .collect::<Vec<_>>()
+            .join(
+                "
+",
+            )
+    }
+
+    /// 2-byte characters only, so the old byte-offset truncation points (13, 21, 27, 33)
+    /// all fall inside a character.
+    const NON_ASCII_TEXT: &str = "éééééééééééééééééééééééééééééééééééééééééééé";
+
+    #[test]
+    fn test_truncate_display_counts_characters() {
+        assert_eq!(ui::truncate_display("short", 10), "short");
+        assert_eq!(ui::truncate_display("abcdefghijkl", 10), "abcdefg...");
+        assert_eq!(
+            ui::truncate_display(&"é".repeat(12), 10),
+            format!("{}...", "é".repeat(7))
+        );
+        assert_eq!(ui::truncate_display("日本語のテキスト", 5), "日本...");
+        assert_eq!(ui::truncate_display("🔱🔱🔱🔱", 4), "🔱🔱🔱🔱");
+    }
+
+    #[test]
+    fn test_session_picker_handles_non_ascii_titles() {
+        let (mut app, _dir) = create_test_app();
+        app.transition_to(AppState::SessionSelect).expect("picker");
+        let mut state = TuiState::new();
+        let mut meta = hades_storage::SessionMetadata::new(
+            "abc12345",
+            NON_ASCII_TEXT,
+            None,
+            Some("éééééééééééééééééééé".to_string()),
+        );
+        meta.message_count = 2;
+        state.sessions = vec![meta];
+
+        let text = rendered_text(&app, &mut state);
+        assert!(text.contains("ééé"));
+        assert!(text.contains("..."));
+    }
+
+    #[test]
+    fn test_copy_select_and_delete_confirm_handle_non_ascii_text() {
+        let (mut app, _dir) = create_test_app();
+        let mut state = TuiState::new();
+        state
+            .turns
+            .push(ChatTurn::with_response(NON_ASCII_TEXT, NON_ASCII_TEXT));
+        app.transition_to(AppState::CopySelect).expect("copy mode");
+        let text = rendered_text(&app, &mut state);
+        assert!(text.contains("ééé"));
+
+        app.transition_to(AppState::Running).expect("running");
+        app.transition_to(AppState::SessionSelect).expect("picker");
+        app.transition_to(AppState::SessionDeleteConfirm)
+            .expect("delete confirm");
+        state.delete_session_title = NON_ASCII_TEXT.to_string();
+        let text = rendered_text(&app, &mut state);
+        assert!(text.contains("ééé"));
+    }
+
+    #[test]
+    fn test_session_tag_badges_and_toast() {
+        assert_eq!(ui::session_tag_badges(&[]), "");
+        let tags = vec!["bugfix".to_string(), "docs".to_string()];
+        assert_eq!(ui::session_tag_badges(&tags), "  [bugfix] [docs]");
+        assert_eq!(
+            runner::tag_toast("docs", false, &tags),
+            "Tagged [docs] · [bugfix] [docs]"
+        );
+        assert_eq!(
+            runner::tag_toast("docs", true, &[]),
+            "Removed [docs] · no tags"
+        );
+    }
+
+    #[test]
+    fn test_sessions_tag_command_returns_tag_action() {
+        let (mut app, _dir) = create_test_app();
+        let mut state = TuiState::new();
+        state.prompt_input = "/sessions tag refactor".to_string();
+
+        let action = InputHandler::handle_key_event(make_key(KeyCode::Enter), &mut app, &mut state)
+            .expect("submit /sessions tag");
+        assert_eq!(
+            action,
+            KeyActionResult::TagSession {
+                tag: "refactor".to_string(),
+                remove: false
+            }
+        );
+    }
+
+    #[test]
+    fn test_session_picker_renders_tag_badges() {
+        let (mut app, _dir) = create_test_app();
+        app.transition_to(AppState::SessionSelect).expect("picker");
+        let mut state = TuiState::new();
+        let mut meta = hades_storage::SessionMetadata::new("abc12345", "Parser work", None, None);
+        meta.add_tag("bugfix");
+        meta.add_tag("review");
+        state.sessions = vec![meta];
+
+        let text = rendered_text(&app, &mut state);
+        assert!(text.contains("Parser work"));
+        assert!(text.contains("[bugfix] [review]"));
+    }
+
+    #[test]
+    fn test_verified_toast_shows_latency_in_ms() {
+        let verification = hades_provider::ProviderVerification {
+            model: Model::new("llama-3.3-70b", "groq", "Llama"),
+            latency: std::time::Duration::from_micros(42_700),
+        };
+        assert_eq!(
+            runner::verified_toast("groq", "llama-3.3-70b", &verification),
+            "✓ Verified groq/llama-3.3-70b (42ms)"
+        );
+    }
+
+    #[test]
+    fn test_format_thousands() {
+        assert_eq!(ui::format_thousands(0), "0");
+        assert_eq!(ui::format_thousands(999), "999");
+        assert_eq!(ui::format_thousands(1_420), "1,420");
+        assert_eq!(ui::format_thousands(1_234_567), "1,234,567");
+    }
+
+    #[test]
+    fn test_session_token_estimate_grows_while_streaming() {
+        let mut state = TuiState::new();
+        assert_eq!(state.estimated_session_tokens(), 0);
+
+        state
+            .turns
+            .push(ChatTurn::new("Explain Rust lifetimes in detail"));
+        let after_prompt = state.estimated_session_tokens();
+        assert!(after_prompt > 0);
+
+        state
+            .turns
+            .last_mut()
+            .unwrap()
+            .append_response_chunk(&"borrow ".repeat(200));
+        assert!(state.estimated_session_tokens() > after_prompt);
+
+        state.clear_conversation();
+        assert_eq!(state.estimated_session_tokens(), 0);
+    }
+
+    #[test]
+    fn test_status_bar_shows_estimated_session_tokens() {
+        let (app, _dir) = create_test_app();
+        let mut state = TuiState::new();
+        let idle = rendered_text(&app, &mut state);
+        assert!(idle.contains("/ for commands"));
+        assert!(!idle.contains(" tokens"));
+
+        state.turns.push(ChatTurn::with_response(
+            "hello there",
+            "word ".repeat(1_500),
+        ));
+        let expected = format!(
+            "~{} tokens",
+            ui::format_thousands(state.estimated_session_tokens())
+        );
+        assert!(
+            expected.contains(','),
+            "test should exercise separators: {expected}"
+        );
+        let text = rendered_text(&app, &mut state);
+        assert!(text.contains(&expected), "status bar shows {expected}");
+    }
+
+    fn scrolled_up_state() -> TuiState {
+        let mut state = TuiState::new();
+        state.update_geometry(100, 20);
+        state.scroll_offset = 10;
+        state.auto_scroll_to_bottom = false;
+        state.has_new_content_below = true;
+        state.prompt_input = "draft".to_string();
+        state.prompt_cursor_position = 5;
+        state
+    }
+
+    #[test]
+    fn test_ctrl_l_jumps_to_bottom_without_typing() {
+        let (mut app, _dir) = create_test_app();
+        let mut state = scrolled_up_state();
+
+        let action =
+            InputHandler::handle_key_event(make_ctrl_key(KeyCode::Char('l')), &mut app, &mut state)
+                .expect("ctrl+l");
+
+        assert_eq!(action, KeyActionResult::Handled);
+        assert_eq!(state.scroll_offset, state.max_scroll_offset());
+        assert_eq!(state.scroll_offset, 80);
+        assert!(state.auto_scroll_to_bottom);
+        assert!(!state.has_new_content_below);
+        assert_eq!(state.prompt_input, "draft", "Ctrl+L must not insert 'l'");
+    }
+
+    #[test]
+    fn test_ctrl_l_works_while_streaming() {
+        let (mut app, _dir) = create_test_app();
+        app.transition_to(AppState::AiStreaming).expect("streaming");
+        let mut state = scrolled_up_state();
+
+        InputHandler::handle_key_event(make_ctrl_key(KeyCode::Char('l')), &mut app, &mut state)
+            .expect("ctrl+l");
+
+        assert_eq!(state.scroll_offset, 80);
+        assert!(state.auto_scroll_to_bottom);
+        assert_eq!(app.state(), AppState::AiStreaming);
+    }
+
+    #[test]
+    fn test_help_lists_ctrl_l() {
+        let (mut app, _dir) = create_test_app();
+        let help = app.execute_command("/help").expect("help").to_string();
+        assert!(help.contains("Ctrl+L"));
+    }
+
+    #[test]
+    fn test_palette_shorthand_alias_opens_highlighted_command() {
+        let (mut app, _dir) = create_test_app();
+        let mut state = TuiState::new();
+
+        for key in [KeyCode::Char('/'), KeyCode::Char('s')] {
+            InputHandler::handle_key_event(make_key(key), &mut app, &mut state).expect("type");
+        }
+        assert_eq!(state.selected_palette_index, 0);
+
+        let action = InputHandler::handle_key_event(make_key(KeyCode::Enter), &mut app, &mut state)
+            .expect("submit /s");
+        assert_eq!(action, KeyActionResult::OpenSessionPicker);
+    }
+
     #[test]
     fn test_sessions_prune_command_returns_prune_action() {
         let (mut app, _dir) = create_test_app();

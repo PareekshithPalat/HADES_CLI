@@ -605,13 +605,14 @@ fn render_status_bar(frame: &mut Frame, app: &HadesApp, state: &TuiState, area: 
                     .bg(HadesTheme::accent())
                     .add_modifier(Modifier::BOLD),
             )
-        } else if let Some(ref usage) = state.current_usage {
-            Span::styled(
-                format!("{} tokens", usage.total_tokens.unwrap_or_default()),
-                Style::default().fg(Color::DarkGray),
-            )
         } else {
-            Span::styled("/ for commands", Style::default().fg(Color::DarkGray))
+            match state.estimated_session_tokens() {
+                0 => Span::styled("/ for commands", Style::default().fg(Color::DarkGray)),
+                tokens => Span::styled(
+                    format!("~{} tokens", format_thousands(tokens)),
+                    Style::default().fg(Color::DarkGray),
+                ),
+            }
         },
         Span::styled(" · ", Style::default().fg(Color::DarkGray)),
         Span::styled("Ctrl+Y Copy", Style::default().fg(HadesTheme::accent())),
@@ -621,6 +622,40 @@ fn render_status_bar(frame: &mut Frame, app: &HadesApp, state: &TuiState, area: 
 
     let paragraph = Paragraph::new(status_line);
     frame.render_widget(paragraph, area);
+}
+
+/// Renders session tags as inline badges, e.g. `  [bugfix] [docs]`.
+pub(crate) fn session_tag_badges(tags: &[String]) -> String {
+    if tags.is_empty() {
+        return String::new();
+    }
+    let badges: Vec<String> = tags.iter().map(|t| format!("[{t}]")).collect();
+    format!("  {}", badges.join(" "))
+}
+
+/// Shortens `text` to at most `max_chars` characters, ending in "..." when cut.
+///
+/// Counts characters rather than bytes, so multi-byte text (accents, CJK, emoji) is never
+/// split inside a character.
+pub(crate) fn truncate_display(text: &str, max_chars: usize) -> String {
+    if text.chars().count() <= max_chars {
+        return text.to_string();
+    }
+    let kept: String = text.chars().take(max_chars.saturating_sub(3)).collect();
+    format!("{kept}...")
+}
+
+/// Formats a count with comma thousands separators (e.g. `1420` -> `1,420`).
+pub(crate) fn format_thousands(value: usize) -> String {
+    let digits = value.to_string();
+    let mut out = String::with_capacity(digits.len() + digits.len() / 3);
+    for (i, ch) in digits.chars().enumerate() {
+        if i > 0 && (digits.len() - i).is_multiple_of(3) {
+            out.push(',');
+        }
+        out.push(ch);
+    }
+    out
 }
 
 /// Helper computing a centered popup rectangle given percentage dimensions.
@@ -875,7 +910,7 @@ fn render_session_select(frame: &mut Frame, app: &HadesApp, state: &TuiState, ar
                 };
 
                 let prefix = if is_selected { " ▸ " } else { "   " };
-                let short_id = if s.id.len() >= 8 { &s.id[..8] } else { &s.id };
+                let short_id: String = s.id.chars().take(8).collect();
                 let model_str = s.active_model.as_deref().unwrap_or("no model");
 
                 let bullet_span = if is_active {
@@ -907,14 +942,7 @@ fn render_session_select(frame: &mut Frame, app: &HadesApp, state: &TuiState, ar
                     Span::styled(prefix, style),
                     bullet_span,
                     Span::styled(
-                        format!(
-                            "{:<24}",
-                            if s.title.len() > 24 {
-                                format!("{}...", &s.title[..21])
-                            } else {
-                                s.title.clone()
-                            }
-                        ),
+                        format!("{:<24}", truncate_display(&s.title, 24)),
                         style.add_modifier(Modifier::BOLD),
                     ),
                     Span::styled(
@@ -922,14 +950,7 @@ fn render_session_select(frame: &mut Frame, app: &HadesApp, state: &TuiState, ar
                         Style::default().fg(Color::DarkGray),
                     ),
                     Span::styled(
-                        format!(
-                            " [{:<16}]",
-                            if model_str.len() > 16 {
-                                format!("{}...", &model_str[..13])
-                            } else {
-                                model_str.to_string()
-                            }
-                        ),
+                        format!(" [{:<16}]", truncate_display(model_str, 16)),
                         Style::default().fg(Color::Yellow),
                     ),
                     Span::styled(
@@ -937,6 +958,12 @@ fn render_session_select(frame: &mut Frame, app: &HadesApp, state: &TuiState, ar
                         Style::default().fg(Color::Green),
                     ),
                     time_span,
+                    Span::styled(
+                        session_tag_badges(&s.tags),
+                        Style::default()
+                            .fg(HadesTheme::info())
+                            .add_modifier(Modifier::BOLD),
+                    ),
                 ]);
 
                 ListItem::new(line)
@@ -987,19 +1014,11 @@ fn render_copy_select(frame: &mut Frame, state: &TuiState, area: Rect) {
                 let prefix = if is_selected { " ▸ " } else { "   " };
                 let turn_num = idx + 1;
 
-                let prompt_preview = if turn.user_prompt.len() > 36 {
-                    format!("{}...", &turn.user_prompt[..33])
-                } else {
-                    turn.user_prompt.clone()
-                };
+                let prompt_preview = truncate_display(&turn.user_prompt, 36);
 
                 let resp_preview = if let Some(ref resp) = turn.assistant_response {
                     let first_line = resp.lines().next().unwrap_or("");
-                    if first_line.len() > 36 {
-                        format!("{}...", &first_line[..33])
-                    } else {
-                        first_line.to_string()
-                    }
+                    truncate_display(first_line, 36)
                 } else if let Some(ref err) = turn.error_text {
                     format!("Error: {err}")
                 } else {
@@ -1095,11 +1114,7 @@ fn render_session_delete_confirm(frame: &mut Frame, state: &TuiState, area: Rect
     let popup_area = centered_rect(55, 30, area);
     frame.render_widget(Clear, popup_area);
 
-    let title_display = if state.delete_session_title.len() > 30 {
-        format!("{}...", &state.delete_session_title[..27])
-    } else {
-        state.delete_session_title.clone()
-    };
+    let title_display = truncate_display(&state.delete_session_title, 30);
 
     let chunks = Layout::default()
         .direction(Direction::Vertical)

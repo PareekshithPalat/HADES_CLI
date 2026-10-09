@@ -98,6 +98,9 @@ pub enum CommandOutput {
     /// Prune empty sessions, plus sessions inactive for more than `older_than_days` if set.
     PruneSessions { older_than_days: Option<u32> },
 
+    /// Add (`remove = false`) or remove a normalized tag on the active session.
+    TagSession { tag: String, remove: bool },
+
     /// Application exit signal.
     Exit,
 }
@@ -137,6 +140,11 @@ impl fmt::Display for CommandOutput {
                     "  {:<14} Jump to top / bottom of conversation",
                     "Home / End"
                 )?;
+                writeln!(
+                    f,
+                    "  {:<14} Jump to latest output and resume auto-scroll",
+                    "Ctrl+L"
+                )?;
                 writeln!(f, "  {:<14} Dismiss active modal / Close palette", "Esc")?;
                 Ok(())
             }
@@ -159,6 +167,13 @@ impl fmt::Display for CommandOutput {
             Self::RemoveMcpServer(name) => write!(f, "Removing MCP server '{}'...", name),
             Self::TestMcpServer(name) => write!(f, "Testing MCP server '{}'...", name),
             Self::PruneSessions { .. } => write!(f, "Pruning sessions..."),
+            Self::TagSession { tag, remove } => {
+                if *remove {
+                    write!(f, "Removing tag [{tag}] from the current session...")
+                } else {
+                    write!(f, "Tagging the current session with [{tag}]...")
+                }
+            }
             Self::Exit => write!(f, "Exiting Hades..."),
         }
     }
@@ -583,7 +598,7 @@ impl Command for ModelCommand {
     }
 
     fn aliases(&self) -> &'static [&'static str] {
-        &["/provider", "/models"]
+        &["/m", "/provider", "/models"]
     }
 
     fn description(&self) -> &'static str {
@@ -664,15 +679,36 @@ impl Command for SessionsCommand {
     }
 
     fn aliases(&self) -> &'static [&'static str] {
-        &["/history"]
+        &["/s", "/history"]
     }
 
     fn description(&self) -> &'static str {
-        "List and switch sessions (`/sessions prune [days]` removes empty or stale sessions)"
+        "List and switch sessions (`/sessions tag|untag <name>`, `/sessions prune [days]`)"
     }
 
     fn execute(&self, context: &mut CommandContext) -> Result<CommandOutput, CommandError> {
         let tokens: Vec<&str> = context.raw_input.split_whitespace().collect();
+        if let Some(action) = tokens
+            .get(1)
+            .filter(|t| t.eq_ignore_ascii_case("tag") || t.eq_ignore_ascii_case("untag"))
+        {
+            let remove = action.eq_ignore_ascii_case("untag");
+            if context.session_id.is_none() {
+                return Err(CommandError::ExecutionFailed(
+                    "No active session to tag".to_string(),
+                ));
+            }
+            return Ok(
+                match (tokens.len(), tokens.get(2).and_then(|t| hades_storage::normalize_tag(t))) {
+                    (3, Some(tag)) => CommandOutput::TagSession { tag, remove },
+                    _ => CommandOutput::Text(format!(
+                        "Usage: /sessions {} <name>\n  Tags are 1-{} characters: letters, digits, '-', '_' or '.' (e.g. bugfix, refactor, docs).",
+                        if remove { "untag" } else { "tag" },
+                        hades_storage::MAX_TAG_LEN
+                    )),
+                },
+            );
+        }
         if tokens
             .get(1)
             .is_some_and(|t| t.eq_ignore_ascii_case("prune"))
@@ -727,6 +763,10 @@ pub struct ToolsCommand;
 impl Command for ToolsCommand {
     fn name(&self) -> &'static str {
         "/tools"
+    }
+
+    fn aliases(&self) -> &'static [&'static str] {
+        &["/t"]
     }
 
     fn description(&self) -> &'static str {
@@ -1779,8 +1819,11 @@ impl CommandRegistry {
             }
         }
 
-        // 4. Prefix match against top-level command names and aliases:
+        // 4. Prefix match against top-level command names and aliases. A command whose
+        // name or alias equals the query exactly (e.g. `/s` -> `/sessions`) is listed
+        // first so it is the highlighted entry.
         let mut prefix_matches = Vec::new();
+        let mut exact_count = 0;
         for cmd in &self.commands {
             let name_lower = cmd.name().to_lowercase();
             let matches_name = name_lower.starts_with(&query);
@@ -1788,17 +1831,28 @@ impl CommandRegistry {
                 .aliases()
                 .iter()
                 .any(|a| a.to_lowercase().starts_with(&query));
+            let is_exact =
+                name_lower == query || cmd.aliases().iter().any(|a| a.to_lowercase() == query);
 
             if matches_name || matches_alias {
-                prefix_matches.push(PaletteItem {
-                    display_name: cmd.name().to_string(),
-                    description: cmd.description().to_string(),
-                    execution_text: cmd.name().to_string(),
-                    is_subcommand: false,
-                    has_subcommands: !cmd.subcommands().is_empty(),
-                    parent_command: None,
-                    requires_args: false,
-                });
+                let index = if is_exact {
+                    exact_count += 1;
+                    exact_count - 1
+                } else {
+                    prefix_matches.len()
+                };
+                prefix_matches.insert(
+                    index,
+                    PaletteItem {
+                        display_name: cmd.name().to_string(),
+                        description: cmd.description().to_string(),
+                        execution_text: cmd.name().to_string(),
+                        is_subcommand: false,
+                        has_subcommands: !cmd.subcommands().is_empty(),
+                        parent_command: None,
+                        requires_args: false,
+                    },
+                );
             }
         }
 
@@ -1907,6 +1961,34 @@ mod tests {
     }
 
     #[test]
+    fn test_sessions_tag_subcommand_parsing() {
+        assert_eq!(
+            run_sessions_command("/sessions tag [BugFix]"),
+            CommandOutput::TagSession {
+                tag: "bugfix".to_string(),
+                remove: false
+            }
+        );
+        assert_eq!(
+            run_sessions_command("/s untag docs"),
+            CommandOutput::TagSession {
+                tag: "docs".to_string(),
+                remove: true
+            }
+        );
+        for invalid in [
+            "/sessions tag",
+            "/sessions tag two words",
+            "/sessions tag bad;tag",
+        ] {
+            match run_sessions_command(invalid) {
+                CommandOutput::Text(usage) => assert!(usage.contains("Usage: /sessions tag")),
+                other => panic!("expected usage for {invalid}, got {other:?}"),
+            }
+        }
+    }
+
+    #[test]
     fn test_sessions_prune_subcommand_parsing() {
         assert_eq!(
             run_sessions_command("/sessions"),
@@ -1943,6 +2025,32 @@ mod tests {
         assert!(report.starts_with("Pruned 1 session(s)"));
         assert!(report.contains("inactive for more than 30 days"));
         assert!(report.contains("abc  Old chat"));
+    }
+
+    #[test]
+    fn test_shorthand_aliases_resolve_and_rank_first_in_palette() {
+        let registry = CommandRegistry::with_defaults();
+        for (alias, command) in [
+            ("/m", "/model"),
+            ("/s", "/sessions"),
+            ("/h", "/help"),
+            ("/t", "/tools"),
+        ] {
+            let found = registry.find(alias).expect("alias registered");
+            assert_eq!(found.name(), command, "{alias} executes {command}");
+
+            let items = registry.filter_palette(alias, None);
+            assert_eq!(
+                items.first().map(|i| i.execution_text.as_str()),
+                Some(command),
+                "{alias} highlights {command} in the palette"
+            );
+        }
+
+        // Other prefix matches are still listed after the exact alias hit.
+        let items = registry.filter_palette("/s", None);
+        assert!(items.iter().any(|i| i.execution_text == "/status"));
+        assert!(items.iter().any(|i| i.execution_text == "/switch"));
     }
 
     #[test]

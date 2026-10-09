@@ -62,6 +62,9 @@ pub enum KeyActionResult {
     /// User requested pruning empty (and optionally stale) sessions.
     PruneSessions { older_than_days: Option<u32> },
 
+    /// User requested adding or removing a tag on the active session.
+    TagSession { tag: String, remove: bool },
+
     /// Application should initiate graceful shutdown and terminate.
     Quit,
 }
@@ -83,6 +86,19 @@ impl InputHandler {
             info!("Received Ctrl+C interrupt signal");
             app.request_shutdown(Some("SIGINT / Ctrl+C".to_string()))?;
             return Ok(KeyActionResult::Quit);
+        }
+
+        // Ctrl+L: jump to the latest output (terminal "refresh" convention). Also active
+        // while a response is generating, which is when the viewport most often lags behind.
+        if key_event.modifiers.contains(KeyModifiers::CONTROL)
+            && matches!(key_event.code, KeyCode::Char('l') | KeyCode::Char('L'))
+            && matches!(
+                app.state(),
+                AppState::Running | AppState::AiThinking | AppState::AiStreaming
+            )
+        {
+            tui_state.scroll_to_bottom();
+            return Ok(KeyActionResult::Handled);
         }
 
         match app.state() {
@@ -117,13 +133,14 @@ impl InputHandler {
             || app.state() == AppState::AiThinking
             || app.state() == AppState::AiStreaming
         {
+            let lines = app.config().general.scroll_speed.max(1);
             match mouse_event.kind {
                 MouseEventKind::ScrollUp => {
-                    tui_state.scroll_up(3);
+                    tui_state.scroll_up(lines);
                     return Ok(KeyActionResult::Handled);
                 }
                 MouseEventKind::ScrollDown => {
-                    tui_state.scroll_down(3);
+                    tui_state.scroll_down(lines);
                     return Ok(KeyActionResult::Handled);
                 }
                 _ => {}
@@ -187,6 +204,9 @@ impl InputHandler {
                             }
                             CommandOutput::PruneSessions { older_than_days } => {
                                 Ok(KeyActionResult::PruneSessions { older_than_days })
+                            }
+                            CommandOutput::TagSession { tag, remove } => {
+                                Ok(KeyActionResult::TagSession { tag, remove })
                             }
                             CommandOutput::ExportSuccess(path) => {
                                 tui_state.show_toast(format!(
@@ -583,6 +603,9 @@ impl InputHandler {
                         }
                         CommandOutput::PruneSessions { older_than_days } => {
                             Ok(KeyActionResult::PruneSessions { older_than_days })
+                        }
+                        CommandOutput::TagSession { tag, remove } => {
+                            Ok(KeyActionResult::TagSession { tag, remove })
                         }
                         _ => {
                             tui_state.set_output(output);

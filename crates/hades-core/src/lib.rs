@@ -59,6 +59,51 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn test_tag_active_session_persists_and_enforces_limits() {
+        let (mut app, _dir) = create_test_app();
+        app.init().expect("init");
+        let sid = app
+            .create_new_session(None)
+            .await
+            .expect("session")
+            .metadata
+            .id;
+
+        let tags = app
+            .set_active_session_tag("[Bugfix]", true)
+            .await
+            .expect("tag");
+        assert_eq!(tags, vec!["bugfix".to_string()]);
+        app.set_active_session_tag("docs", true).await.expect("tag");
+
+        let stored = app
+            .session_repository()
+            .get_session(&sid)
+            .await
+            .expect("load")
+            .expect("exists");
+        assert_eq!(stored.metadata.tags, vec!["bugfix", "docs"]);
+        let listed = app.list_sessions().await.expect("list");
+        assert!(listed
+            .iter()
+            .any(|m| m.id == sid && m.tags.contains(&"docs".to_string())));
+
+        let tags = app
+            .set_active_session_tag("bugfix", false)
+            .await
+            .expect("untag");
+        assert_eq!(tags, vec!["docs".to_string()]);
+
+        for i in 0..7 {
+            app.set_active_session_tag(&format!("t{i}"), true)
+                .await
+                .expect("tag");
+        }
+        assert!(app.set_active_session_tag("overflow", true).await.is_err());
+        assert!(app.set_active_session_tag("bad tag", true).await.is_err());
+    }
+
+    #[tokio::test]
     async fn test_prune_sessions_never_removes_current_session() {
         let (mut app, _dir) = create_test_app();
         app.init().expect("init");

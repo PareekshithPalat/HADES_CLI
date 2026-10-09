@@ -1,4 +1,4 @@
-use hades_core::CommandOutput;
+use hades_core::{CommandOutput, TokenEstimator};
 use hades_provider::{Model, ProviderMetadata, Usage};
 use hades_storage::{MessageRole, SessionMetadata, SessionRecord};
 
@@ -480,6 +480,24 @@ impl TuiState {
     }
 
     /// Scrolls directly to the latest conversation content at the bottom (End).
+    /// Estimated token count of the visible conversation (prompts and responses).
+    ///
+    /// Computed from the rendered turns, so it grows live while a response streams and is
+    /// rebuilt when a session is loaded or cleared.
+    pub fn estimated_session_tokens(&self) -> usize {
+        self.turns
+            .iter()
+            .map(|turn| {
+                let prompt =
+                    TokenEstimator::estimate_message_tokens(MessageRole::User, &turn.user_prompt);
+                let response = turn.assistant_response.as_deref().map_or(0, |text| {
+                    TokenEstimator::estimate_message_tokens(MessageRole::Assistant, text)
+                });
+                prompt + response
+            })
+            .sum()
+    }
+
     /// Resets the conversation viewport after `/clear`.
     pub fn clear_conversation(&mut self) {
         self.turns.clear();

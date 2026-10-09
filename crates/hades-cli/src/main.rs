@@ -1,4 +1,5 @@
 mod cli;
+mod completions;
 mod logging;
 mod prune;
 
@@ -16,6 +17,13 @@ use hades_tui::TuiRunner;
 #[tokio::main]
 async fn main() {
     let args = CliArgs::parse();
+
+    // Shell completion generation: print the script and exit before any setup
+    if let Some(shell) = args.completions {
+        let bin_name = completions::invoked_bin_name();
+        completions::write_completions(shell, &bin_name, &mut std::io::stdout());
+        return;
+    }
 
     // 1. Initialize background file logging
     let _log_guard = match logging::init_logging(args.log_dir.as_deref()) {

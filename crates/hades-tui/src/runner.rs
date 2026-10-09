@@ -320,9 +320,14 @@ impl TuiRunner {
                                             )
                                             .await
                                         {
-                                            Ok(_) => {
+                                            Ok(verification) => {
                                                 tui_state.clear_error();
                                                 tui_state.is_model_switch_flow = false;
+                                                tui_state.show_toast(verified_toast(
+                                                    &provider_id,
+                                                    &model_id,
+                                                    &verification,
+                                                ));
                                                 app.transition_to(AppState::Running)?;
                                             }
                                             Err(e) => {
@@ -340,8 +345,13 @@ impl TuiRunner {
                                             )
                                             .await
                                         {
-                                            Ok(_) => {
+                                            Ok(verification) => {
                                                 tui_state.clear_error();
+                                                tui_state.show_toast(verified_toast(
+                                                    &provider_id,
+                                                    &model_id,
+                                                    &verification,
+                                                ));
                                                 app.transition_to(AppState::Running)?;
                                             }
                                             Err(e) => {
@@ -403,6 +413,12 @@ impl TuiRunner {
                                 KeyActionResult::TestMcpServer(name) => {
                                     match app.test_mcp_server(&name).await {
                                         Ok(result) => tui_state.set_output(CommandOutput::Text(result)),
+                                        Err(e) => tui_state.set_error(e.to_string()),
+                                    }
+                                }
+                                KeyActionResult::TagSession { tag, remove } => {
+                                    match app.set_active_session_tag(&tag, !remove).await {
+                                        Ok(tags) => tui_state.show_toast(tag_toast(&tag, remove, &tags)),
                                         Err(e) => tui_state.set_error(e.to_string()),
                                     }
                                 }
@@ -481,6 +497,35 @@ impl TuiRunner {
 
         loop_result
     }
+}
+
+/// Toast summarizing a tag change on the active session.
+pub(crate) fn tag_toast(tag: &str, removed: bool, tags: &[String]) -> String {
+    let current = if tags.is_empty() {
+        "no tags".to_string()
+    } else {
+        tags.iter()
+            .map(|t| format!("[{t}]"))
+            .collect::<Vec<_>>()
+            .join(" ")
+    };
+    if removed {
+        format!("Removed [{tag}] · {current}")
+    } else {
+        format!("Tagged [{tag}] · {current}")
+    }
+}
+
+/// Toast shown after a provider/model passes verification, including the round-trip latency.
+pub(crate) fn verified_toast(
+    provider_id: &str,
+    model_id: &str,
+    verification: &hades_provider::ProviderVerification,
+) -> String {
+    format!(
+        "✓ Verified {provider_id}/{model_id} ({}ms)",
+        verification.latency_ms()
+    )
 }
 
 /// Runs a single streaming request pass, accumulating text and tool calls.

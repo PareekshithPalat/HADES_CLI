@@ -1,8 +1,10 @@
+pub mod gpu;
 pub mod info;
 pub mod network;
 pub mod process;
 pub mod runtime;
 
+pub use gpu::SystemGpuTool;
 pub use info::{
     format_uptime, SystemArchitectureTool, SystemHostnameTool, SystemInfoTool, SystemPlatformTool,
     SystemUptimeTool,

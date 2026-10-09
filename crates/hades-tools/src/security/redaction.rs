@@ -41,7 +41,8 @@ impl SecretRedactor {
             if value.is_empty() {
                 String::new()
             } else if value.len() > 8 {
-                format!("{}...[REDACTED]", &value[..4])
+                let visible: String = value.chars().take(4).collect();
+                format!("{visible}...[REDACTED]")
             } else {
                 "[REDACTED]".to_string()
             }
@@ -83,5 +84,17 @@ impl SecretRedactor {
 
         result.push_str(remaining);
         result
+    }
+}
+
+#[cfg(test)]
+mod multibyte_tests {
+    use super::SecretRedactor;
+
+    #[test]
+    fn test_redact_env_var_with_multibyte_secret() {
+        let redacted = SecretRedactor::redact_env_var("MY_API_KEY", "aéééééé");
+        assert!(redacted.ends_with("...[REDACTED]"));
+        assert!(redacted.starts_with('a'));
     }
 }

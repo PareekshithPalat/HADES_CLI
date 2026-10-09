@@ -6,6 +6,7 @@ pub use error::ConfigError;
 pub use model::{
     ActiveModelConfig, BrowserConfig, GeneralConfig, HadesConfig, McpConfig, McpServerConfig,
     McpTransportType, NotificationConfig, ProviderConfig, UiConfig, CURRENT_CONFIG_VERSION,
+    DEFAULT_SCROLL_SPEED,
 };
 pub use service::ConfigService;
 
@@ -52,6 +53,38 @@ mod tests {
         let loaded = service.load().expect("load config");
         assert_eq!(loaded, config);
         assert_eq!(loaded.model.as_ref().unwrap().model_id, "gpt-4o");
+    }
+
+    #[test]
+    fn test_scroll_speed_default_parse_and_validation() {
+        assert_eq!(
+            HadesConfig::default().general.scroll_speed,
+            DEFAULT_SCROLL_SPEED
+        );
+        assert_eq!(DEFAULT_SCROLL_SPEED, 3);
+
+        let config: HadesConfig = toml::from_str(
+            "[general]
+scroll_speed = 1
+",
+        )
+        .expect("parse config");
+        assert_eq!(config.general.scroll_speed, 1);
+        assert!(config.validate().is_ok());
+
+        for invalid in [0, 101] {
+            let config = HadesConfig {
+                general: GeneralConfig {
+                    scroll_speed: invalid,
+                    ..Default::default()
+                },
+                ..Default::default()
+            };
+            assert!(
+                config.validate().is_err(),
+                "scroll_speed {invalid} rejected"
+            );
+        }
     }
 
     #[test]
