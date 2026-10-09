@@ -90,8 +90,8 @@ impl Tool for SystemProcessListTool {
         for p in selected {
             let pid = p.pid().as_u32();
             let name_str = p.name().to_string_lossy();
-            let truncated_name = if name_str.len() > 30 {
-                format!("{}...", &name_str[..27])
+            let truncated_name = if name_str.chars().count() > 30 {
+                format!("{}...", name_str.chars().take(27).collect::<String>())
             } else {
                 name_str.to_string()
             };
@@ -280,8 +280,8 @@ impl Tool for SystemProcessFindTool {
         for p in matches.into_iter().take(30) {
             let pid = p.pid().as_u32();
             let name_str = p.name().to_string_lossy();
-            let truncated_name = if name_str.len() > 28 {
-                format!("{}...", &name_str[..25])
+            let truncated_name = if name_str.chars().count() > 28 {
+                format!("{}...", name_str.chars().take(25).collect::<String>())
             } else {
                 name_str.to_string()
             };
@@ -293,8 +293,8 @@ impl Tool for SystemProcessFindTool {
                 .map(|s| s.to_string_lossy().to_string())
                 .collect::<Vec<_>>()
                 .join(" ");
-            let truncated_cmd = if cmdline.len() > 30 {
-                format!("{}...", &cmdline[..27])
+            let truncated_cmd = if cmdline.chars().count() > 30 {
+                format!("{}...", cmdline.chars().take(27).collect::<String>())
             } else {
                 cmdline
             };

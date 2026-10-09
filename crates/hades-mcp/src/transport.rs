@@ -745,7 +745,7 @@ impl HttpTransport {
         }
 
         let preview = if body_str.len() > 200 {
-            format!("{}...", &body_str[..200])
+            format!("{}...", prefix_within(&body_str, 200))
         } else {
             body_str.to_string()
         };
@@ -1013,6 +1013,19 @@ impl McpTransport for HttpTransport {
         *self.session_id.write().await = None;
         Ok(())
     }
+}
+
+/// Returns the longest prefix of `text` that is at most `max_bytes` long and ends on a
+/// UTF-8 character boundary, so truncation never splits a multi-byte character.
+fn prefix_within(text: &str, max_bytes: usize) -> &str {
+    if text.len() <= max_bytes {
+        return text;
+    }
+    let mut end = max_bytes;
+    while !text.is_char_boundary(end) {
+        end -= 1;
+    }
+    &text[..end]
 }
 
 #[cfg(test)]

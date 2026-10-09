@@ -784,3 +784,18 @@ async fn test_m_permissions_are_not_bypassed_by_orchestration() {
         EvaluationResult::RequiresApproval { .. }
     ));
 }
+
+#[test]
+fn test_compress_tool_result_never_splits_multibyte_characters() {
+    use hades_core::SmartContextBuilder;
+
+    // Leading ASCII byte makes every even byte offset fall inside a 2-byte 'é'.
+    let text = format!("a{}", "é".repeat(5_000));
+    let (out, truncated) = SmartContextBuilder::compress_tool_result(&text, 100);
+    assert!(truncated);
+    assert!(out.contains("[Output truncated"));
+
+    let json = serde_json::json!([{ "title": "x", "body": format!("a{}", "é".repeat(400)) }]);
+    let (out, _) = SmartContextBuilder::compress_tool_result(&json.to_string(), 50);
+    assert!(out.contains("[truncated]") || out.contains("omitted"));
+}
