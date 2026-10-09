@@ -100,6 +100,10 @@ pub struct GeneralConfig {
     /// Unknown names are accepted and rendered with the `fire` palette.
     #[serde(default = "default_terminal_theme")]
     pub theme: String,
+
+    /// Lines scrolled per mouse-wheel notch in the conversation view (1-100).
+    #[serde(default = "default_scroll_speed")]
+    pub scroll_speed: usize,
 }
 
 fn default_app_name() -> String {
@@ -114,12 +118,21 @@ fn default_terminal_theme() -> String {
     "fire".to_string()
 }
 
+/// Default number of lines scrolled per mouse-wheel notch.
+pub const DEFAULT_SCROLL_SPEED: usize = 3;
+const MAX_SCROLL_SPEED: usize = 100;
+
+fn default_scroll_speed() -> usize {
+    DEFAULT_SCROLL_SPEED
+}
+
 impl Default for GeneralConfig {
     fn default() -> Self {
         Self {
             app_name: default_app_name(),
             default_mode: default_mode(),
             theme: default_terminal_theme(),
+            scroll_speed: default_scroll_speed(),
         }
     }
 }
@@ -140,6 +153,12 @@ impl GeneralConfig {
             return Err(ConfigError::Validation(
                 "Terminal theme cannot be empty".to_string(),
             ));
+        }
+        if !(1..=MAX_SCROLL_SPEED).contains(&self.scroll_speed) {
+            return Err(ConfigError::Validation(format!(
+                "general.scroll_speed must be between 1 and {MAX_SCROLL_SPEED} (got {})",
+                self.scroll_speed
+            )));
         }
         Ok(())
     }

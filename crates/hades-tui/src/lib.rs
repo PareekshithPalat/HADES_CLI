@@ -125,6 +125,63 @@ mod tests {
         );
     }
 
+    fn create_test_app_with_config(config_toml: &str) -> (HadesApp, tempfile::TempDir) {
+        let dir = tempdir().expect("create temp dir");
+        let config_path = dir.path().join("config.toml");
+        std::fs::write(&config_path, config_toml).expect("write config");
+        let mut app = HadesApp::new(
+            hades_config::ConfigService::with_path(config_path),
+            hades_storage::StorageService::with_root(dir.path().join("data")),
+            hades_events::EventBus::new(),
+        );
+        app.init().expect("init app");
+        let _ = app.transition_to(AppState::Running);
+        (app, dir)
+    }
+
+    fn wheel_delta(app: &mut HadesApp) -> (usize, usize) {
+        let mut state = TuiState::new();
+        state.update_geometry(200, 20);
+        state.scroll_offset = 100;
+
+        InputHandler::handle_mouse_event(
+            make_mouse_scroll(MouseEventKind::ScrollUp),
+            app,
+            &mut state,
+        )
+        .expect("scroll up");
+        let up = 100 - state.scroll_offset;
+
+        InputHandler::handle_mouse_event(
+            make_mouse_scroll(MouseEventKind::ScrollDown),
+            app,
+            &mut state,
+        )
+        .expect("scroll down");
+        let down = state.scroll_offset - (100 - up);
+        (up, down)
+    }
+
+    #[test]
+    fn test_mouse_wheel_uses_configured_scroll_speed() {
+        let (mut default_app, _d1) = create_test_app_with_config("");
+        assert_eq!(wheel_delta(&mut default_app), (3, 3));
+
+        let (mut precise_app, _d2) = create_test_app_with_config(
+            "[general]
+scroll_speed = 1
+",
+        );
+        assert_eq!(wheel_delta(&mut precise_app), (1, 1));
+
+        let (mut fast_app, _d3) = create_test_app_with_config(
+            "[general]
+scroll_speed = 7
+",
+        );
+        assert_eq!(wheel_delta(&mut fast_app), (7, 7));
+    }
+
     fn scrolled_up_state() -> TuiState {
         let mut state = TuiState::new();
         state.update_geometry(100, 20);

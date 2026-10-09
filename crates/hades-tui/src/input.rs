@@ -130,13 +130,14 @@ impl InputHandler {
             || app.state() == AppState::AiThinking
             || app.state() == AppState::AiStreaming
         {
+            let lines = app.config().general.scroll_speed.max(1);
             match mouse_event.kind {
                 MouseEventKind::ScrollUp => {
-                    tui_state.scroll_up(3);
+                    tui_state.scroll_up(lines);
                     return Ok(KeyActionResult::Handled);
                 }
                 MouseEventKind::ScrollDown => {
-                    tui_state.scroll_down(3);
+                    tui_state.scroll_down(lines);
                     return Ok(KeyActionResult::Handled);
                 }
                 _ => {}
