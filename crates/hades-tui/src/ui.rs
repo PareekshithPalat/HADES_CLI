@@ -605,13 +605,14 @@ fn render_status_bar(frame: &mut Frame, app: &HadesApp, state: &TuiState, area: 
                     .bg(HadesTheme::accent())
                     .add_modifier(Modifier::BOLD),
             )
-        } else if let Some(ref usage) = state.current_usage {
-            Span::styled(
-                format!("{} tokens", usage.total_tokens.unwrap_or_default()),
-                Style::default().fg(Color::DarkGray),
-            )
         } else {
-            Span::styled("/ for commands", Style::default().fg(Color::DarkGray))
+            match state.estimated_session_tokens() {
+                0 => Span::styled("/ for commands", Style::default().fg(Color::DarkGray)),
+                tokens => Span::styled(
+                    format!("~{} tokens", format_thousands(tokens)),
+                    Style::default().fg(Color::DarkGray),
+                ),
+            }
         },
         Span::styled(" · ", Style::default().fg(Color::DarkGray)),
         Span::styled("Ctrl+Y Copy", Style::default().fg(HadesTheme::accent())),
@@ -621,6 +622,19 @@ fn render_status_bar(frame: &mut Frame, app: &HadesApp, state: &TuiState, area: 
 
     let paragraph = Paragraph::new(status_line);
     frame.render_widget(paragraph, area);
+}
+
+/// Formats a count with comma thousands separators (e.g. `1420` -> `1,420`).
+pub(crate) fn format_thousands(value: usize) -> String {
+    let digits = value.to_string();
+    let mut out = String::with_capacity(digits.len() + digits.len() / 3);
+    for (i, ch) in digits.chars().enumerate() {
+        if i > 0 && (digits.len() - i).is_multiple_of(3) {
+            out.push(',');
+        }
+        out.push(ch);
+    }
+    out
 }
 
 /// Helper computing a centered popup rectangle given percentage dimensions.

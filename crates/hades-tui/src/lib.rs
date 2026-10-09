@@ -182,6 +182,79 @@ scroll_speed = 7
         assert_eq!(wheel_delta(&mut fast_app), (7, 7));
     }
 
+    fn rendered_text(app: &HadesApp, state: &mut TuiState) -> String {
+        let mut terminal =
+            ratatui::Terminal::new(ratatui::backend::TestBackend::new(140, 30)).expect("terminal");
+        terminal
+            .draw(|frame| ui::render(frame, app, state))
+            .expect("draw frame");
+        let buffer = terminal.backend().buffer();
+        let width = buffer.area.width as usize;
+        buffer
+            .content
+            .chunks(width)
+            .map(|row| row.iter().map(|c| c.symbol()).collect::<String>())
+            .collect::<Vec<_>>()
+            .join(
+                "
+",
+            )
+    }
+
+    #[test]
+    fn test_format_thousands() {
+        assert_eq!(ui::format_thousands(0), "0");
+        assert_eq!(ui::format_thousands(999), "999");
+        assert_eq!(ui::format_thousands(1_420), "1,420");
+        assert_eq!(ui::format_thousands(1_234_567), "1,234,567");
+    }
+
+    #[test]
+    fn test_session_token_estimate_grows_while_streaming() {
+        let mut state = TuiState::new();
+        assert_eq!(state.estimated_session_tokens(), 0);
+
+        state
+            .turns
+            .push(ChatTurn::new("Explain Rust lifetimes in detail"));
+        let after_prompt = state.estimated_session_tokens();
+        assert!(after_prompt > 0);
+
+        state
+            .turns
+            .last_mut()
+            .unwrap()
+            .append_response_chunk(&"borrow ".repeat(200));
+        assert!(state.estimated_session_tokens() > after_prompt);
+
+        state.clear_conversation();
+        assert_eq!(state.estimated_session_tokens(), 0);
+    }
+
+    #[test]
+    fn test_status_bar_shows_estimated_session_tokens() {
+        let (app, _dir) = create_test_app();
+        let mut state = TuiState::new();
+        let idle = rendered_text(&app, &mut state);
+        assert!(idle.contains("/ for commands"));
+        assert!(!idle.contains(" tokens"));
+
+        state.turns.push(ChatTurn::with_response(
+            "hello there",
+            "word ".repeat(1_500),
+        ));
+        let expected = format!(
+            "~{} tokens",
+            ui::format_thousands(state.estimated_session_tokens())
+        );
+        assert!(
+            expected.contains(','),
+            "test should exercise separators: {expected}"
+        );
+        let text = rendered_text(&app, &mut state);
+        assert!(text.contains(&expected), "status bar shows {expected}");
+    }
+
     fn scrolled_up_state() -> TuiState {
         let mut state = TuiState::new();
         state.update_geometry(100, 20);
