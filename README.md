@@ -161,6 +161,12 @@ hadey -p "explain this error: $(cat error.log)"
 cat error.log | hadey -p -
 # Read-only tools run automatically; tools that need approval are skipped in this mode.
 
+# Shell completions (add the line to your shell profile)
+source <(hadey --completions bash)                       # bash
+hadey --completions zsh > "${fpath[1]}/_hadey"          # zsh
+hadey --completions fish > ~/.config/fish/completions/hadey.fish
+hadey --completions powershell | Out-String | Invoke-Expression   # PowerShell
+
 # Launch with custom configuration and data paths
 hadey --config ~/.config/hades/custom.toml --data-dir ~/my_hades_storage
 
@@ -189,6 +195,7 @@ Options:
       --prune-older-than <DAYS>  Also delete sessions inactive for more than DAYS days (implies --prune)
   -s, --session <SESSION_ID> Resume an existing conversation session by ID
   -p, --prompt <TEXT>        Run one prompt non-interactively, stream the answer to stdout and exit ("-" reads stdin)
+      --completions <SHELL>  Print a shell completion script (bash, zsh, fish, powershell, elvish) and exit
   -h, --help                 Print help
   -V, --version              Print version
 ```
