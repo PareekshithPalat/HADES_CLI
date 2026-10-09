@@ -416,6 +416,12 @@ impl TuiRunner {
                                         Err(e) => tui_state.set_error(e.to_string()),
                                     }
                                 }
+                                KeyActionResult::TagSession { tag, remove } => {
+                                    match app.set_active_session_tag(&tag, !remove).await {
+                                        Ok(tags) => tui_state.show_toast(tag_toast(&tag, remove, &tags)),
+                                        Err(e) => tui_state.set_error(e.to_string()),
+                                    }
+                                }
                                 KeyActionResult::PruneSessions { older_than_days } => {
                                     let criteria = PruneCriteria {
                                         empty: true,
@@ -490,6 +496,23 @@ impl TuiRunner {
         }
 
         loop_result
+    }
+}
+
+/// Toast summarizing a tag change on the active session.
+pub(crate) fn tag_toast(tag: &str, removed: bool, tags: &[String]) -> String {
+    let current = if tags.is_empty() {
+        "no tags".to_string()
+    } else {
+        tags.iter()
+            .map(|t| format!("[{t}]"))
+            .collect::<Vec<_>>()
+            .join(" ")
+    };
+    if removed {
+        format!("Removed [{tag}] · {current}")
+    } else {
+        format!("Tagged [{tag}] · {current}")
     }
 }
 

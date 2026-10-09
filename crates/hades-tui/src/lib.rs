@@ -202,6 +202,53 @@ scroll_speed = 7
     }
 
     #[test]
+    fn test_session_tag_badges_and_toast() {
+        assert_eq!(ui::session_tag_badges(&[]), "");
+        let tags = vec!["bugfix".to_string(), "docs".to_string()];
+        assert_eq!(ui::session_tag_badges(&tags), "  [bugfix] [docs]");
+        assert_eq!(
+            runner::tag_toast("docs", false, &tags),
+            "Tagged [docs] · [bugfix] [docs]"
+        );
+        assert_eq!(
+            runner::tag_toast("docs", true, &[]),
+            "Removed [docs] · no tags"
+        );
+    }
+
+    #[test]
+    fn test_sessions_tag_command_returns_tag_action() {
+        let (mut app, _dir) = create_test_app();
+        let mut state = TuiState::new();
+        state.prompt_input = "/sessions tag refactor".to_string();
+
+        let action = InputHandler::handle_key_event(make_key(KeyCode::Enter), &mut app, &mut state)
+            .expect("submit /sessions tag");
+        assert_eq!(
+            action,
+            KeyActionResult::TagSession {
+                tag: "refactor".to_string(),
+                remove: false
+            }
+        );
+    }
+
+    #[test]
+    fn test_session_picker_renders_tag_badges() {
+        let (mut app, _dir) = create_test_app();
+        app.transition_to(AppState::SessionSelect).expect("picker");
+        let mut state = TuiState::new();
+        let mut meta = hades_storage::SessionMetadata::new("abc12345", "Parser work", None, None);
+        meta.add_tag("bugfix");
+        meta.add_tag("review");
+        state.sessions = vec![meta];
+
+        let text = rendered_text(&app, &mut state);
+        assert!(text.contains("Parser work"));
+        assert!(text.contains("[bugfix] [review]"));
+    }
+
+    #[test]
     fn test_verified_toast_shows_latency_in_ms() {
         let verification = hades_provider::ProviderVerification {
             model: Model::new("llama-3.3-70b", "groq", "Llama"),

@@ -624,6 +624,15 @@ fn render_status_bar(frame: &mut Frame, app: &HadesApp, state: &TuiState, area: 
     frame.render_widget(paragraph, area);
 }
 
+/// Renders session tags as inline badges, e.g. `  [bugfix] [docs]`.
+pub(crate) fn session_tag_badges(tags: &[String]) -> String {
+    if tags.is_empty() {
+        return String::new();
+    }
+    let badges: Vec<String> = tags.iter().map(|t| format!("[{t}]")).collect();
+    format!("  {}", badges.join(" "))
+}
+
 /// Formats a count with comma thousands separators (e.g. `1420` -> `1,420`).
 pub(crate) fn format_thousands(value: usize) -> String {
     let digits = value.to_string();
@@ -951,6 +960,12 @@ fn render_session_select(frame: &mut Frame, app: &HadesApp, state: &TuiState, ar
                         Style::default().fg(Color::Green),
                     ),
                     time_span,
+                    Span::styled(
+                        session_tag_badges(&s.tags),
+                        Style::default()
+                            .fg(HadesTheme::info())
+                            .add_modifier(Modifier::BOLD),
+                    ),
                 ]);
 
                 ListItem::new(line)

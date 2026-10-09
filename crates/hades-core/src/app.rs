@@ -1190,6 +1190,39 @@ impl HadesApp {
         Ok(record)
     }
 
+    /// Adds (`add = true`) or removes a tag on the active session and persists it.
+    /// Returns the session's tags after the change.
+    pub async fn set_active_session_tag(
+        &mut self,
+        tag: &str,
+        add: bool,
+    ) -> Result<Vec<String>, CoreError> {
+        let tag = hades_storage::normalize_tag(tag)
+            .ok_or_else(|| CoreError::Runtime(format!("Invalid tag '{tag}'")))?;
+        let session = self
+            .active_session
+            .as_mut()
+            .ok_or_else(|| CoreError::Runtime("No active session to tag".to_string()))?;
+
+        let changed = if add {
+            if session.metadata.tags.len() >= hades_storage::MAX_SESSION_TAGS
+                && !session.metadata.tags.contains(&tag)
+            {
+                return Err(CoreError::Runtime(format!(
+                    "A session can have at most {} tags",
+                    hades_storage::MAX_SESSION_TAGS
+                )));
+            }
+            session.metadata.add_tag(&tag)
+        } else {
+            session.metadata.remove_tag(&tag)
+        };
+        if changed {
+            self.session_repository.save_session(session).await?;
+        }
+        Ok(session.metadata.tags.clone())
+    }
+
     /// Deletes sessions matching `criteria`. The current in-memory session and the persisted
     /// active session are never removed. Returns the metadata of deleted sessions.
     pub async fn prune_sessions(

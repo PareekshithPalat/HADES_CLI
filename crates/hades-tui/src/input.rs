@@ -62,6 +62,9 @@ pub enum KeyActionResult {
     /// User requested pruning empty (and optionally stale) sessions.
     PruneSessions { older_than_days: Option<u32> },
 
+    /// User requested adding or removing a tag on the active session.
+    TagSession { tag: String, remove: bool },
+
     /// Application should initiate graceful shutdown and terminate.
     Quit,
 }
@@ -201,6 +204,9 @@ impl InputHandler {
                             }
                             CommandOutput::PruneSessions { older_than_days } => {
                                 Ok(KeyActionResult::PruneSessions { older_than_days })
+                            }
+                            CommandOutput::TagSession { tag, remove } => {
+                                Ok(KeyActionResult::TagSession { tag, remove })
                             }
                             CommandOutput::ExportSuccess(path) => {
                                 tui_state.show_toast(format!(
@@ -597,6 +603,9 @@ impl InputHandler {
                         }
                         CommandOutput::PruneSessions { older_than_days } => {
                             Ok(KeyActionResult::PruneSessions { older_than_days })
+                        }
+                        CommandOutput::TagSession { tag, remove } => {
+                            Ok(KeyActionResult::TagSession { tag, remove })
                         }
                         _ => {
                             tui_state.set_output(output);

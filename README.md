@@ -265,7 +265,7 @@ Type `/` in the prompt input field to activate the command palette. Shorthand al
 | `/mcp` | None | Inspect configured Model Context Protocol (MCP) servers, tools, and diagnostics. |
 | `/permissions` | None | View security rules, permission scopes, and risk levels for active session. |
 | `/workspace` | None | View active workspace root directory path and detected project metadata. |
-| `/sessions` (`/s`) | `prune [days]` | Open session manager to view, rename, switch, or delete saved conversations. `/sessions prune` removes empty sessions; `/sessions prune 30` also removes sessions inactive for 30+ days. The current session is never removed. |
+| `/sessions` (`/s`) | `tag\|untag <name>`, `prune [days]` | Open session manager to view, rename, switch, or delete saved conversations. `/sessions tag bugfix` labels the current session (shown as badges in the session manager); `/sessions untag bugfix` removes it. `/sessions prune` removes empty sessions; `/sessions prune 30` also removes sessions inactive for 30+ days. The current session is never removed. |
 | `/new` | None | Create a new isolated conversation session. |
 | `/clear` | None | Clear the conversation and reset model context while keeping the current session. |
 | `/switch` | None | Quick-switch to a recent conversation session. |

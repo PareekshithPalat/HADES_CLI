@@ -98,6 +98,9 @@ pub enum CommandOutput {
     /// Prune empty sessions, plus sessions inactive for more than `older_than_days` if set.
     PruneSessions { older_than_days: Option<u32> },
 
+    /// Add (`remove = false`) or remove a normalized tag on the active session.
+    TagSession { tag: String, remove: bool },
+
     /// Application exit signal.
     Exit,
 }
@@ -164,6 +167,13 @@ impl fmt::Display for CommandOutput {
             Self::RemoveMcpServer(name) => write!(f, "Removing MCP server '{}'...", name),
             Self::TestMcpServer(name) => write!(f, "Testing MCP server '{}'...", name),
             Self::PruneSessions { .. } => write!(f, "Pruning sessions..."),
+            Self::TagSession { tag, remove } => {
+                if *remove {
+                    write!(f, "Removing tag [{tag}] from the current session...")
+                } else {
+                    write!(f, "Tagging the current session with [{tag}]...")
+                }
+            }
             Self::Exit => write!(f, "Exiting Hades..."),
         }
     }
@@ -673,11 +683,32 @@ impl Command for SessionsCommand {
     }
 
     fn description(&self) -> &'static str {
-        "List and switch sessions (`/sessions prune [days]` removes empty or stale sessions)"
+        "List and switch sessions (`/sessions tag|untag <name>`, `/sessions prune [days]`)"
     }
 
     fn execute(&self, context: &mut CommandContext) -> Result<CommandOutput, CommandError> {
         let tokens: Vec<&str> = context.raw_input.split_whitespace().collect();
+        if let Some(action) = tokens
+            .get(1)
+            .filter(|t| t.eq_ignore_ascii_case("tag") || t.eq_ignore_ascii_case("untag"))
+        {
+            let remove = action.eq_ignore_ascii_case("untag");
+            if context.session_id.is_none() {
+                return Err(CommandError::ExecutionFailed(
+                    "No active session to tag".to_string(),
+                ));
+            }
+            return Ok(
+                match (tokens.len(), tokens.get(2).and_then(|t| hades_storage::normalize_tag(t))) {
+                    (3, Some(tag)) => CommandOutput::TagSession { tag, remove },
+                    _ => CommandOutput::Text(format!(
+                        "Usage: /sessions {} <name>\n  Tags are 1-{} characters: letters, digits, '-', '_' or '.' (e.g. bugfix, refactor, docs).",
+                        if remove { "untag" } else { "tag" },
+                        hades_storage::MAX_TAG_LEN
+                    )),
+                },
+            );
+        }
         if tokens
             .get(1)
             .is_some_and(|t| t.eq_ignore_ascii_case("prune"))
@@ -1927,6 +1958,34 @@ mod tests {
         SessionsCommand
             .execute(&mut context)
             .expect("execute /sessions")
+    }
+
+    #[test]
+    fn test_sessions_tag_subcommand_parsing() {
+        assert_eq!(
+            run_sessions_command("/sessions tag [BugFix]"),
+            CommandOutput::TagSession {
+                tag: "bugfix".to_string(),
+                remove: false
+            }
+        );
+        assert_eq!(
+            run_sessions_command("/s untag docs"),
+            CommandOutput::TagSession {
+                tag: "docs".to_string(),
+                remove: true
+            }
+        );
+        for invalid in [
+            "/sessions tag",
+            "/sessions tag two words",
+            "/sessions tag bad;tag",
+        ] {
+            match run_sessions_command(invalid) {
+                CommandOutput::Text(usage) => assert!(usage.contains("Usage: /sessions tag")),
+                other => panic!("expected usage for {invalid}, got {other:?}"),
+            }
+        }
     }
 
     #[test]

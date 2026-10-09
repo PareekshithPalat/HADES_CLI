@@ -12,8 +12,8 @@ pub use import::{
     detect_format, import_from_file, import_from_str, ImportSourceFormat, SessionImporter,
 };
 pub use model::{
-    generate_session_title, Message, MessageMetadata, MessageRecord, MessageRole, SessionMetadata,
-    SessionRecord, StorageHealth, StorageStatus,
+    generate_session_title, normalize_tag, Message, MessageMetadata, MessageRecord, MessageRole,
+    SessionMetadata, SessionRecord, StorageHealth, StorageStatus, MAX_SESSION_TAGS, MAX_TAG_LEN,
 };
 pub use repository::{FileSessionRepository, PruneCriteria, SessionRepository};
 pub use service::StorageService;
