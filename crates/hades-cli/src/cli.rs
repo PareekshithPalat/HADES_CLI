@@ -40,6 +40,10 @@ pub struct CliArgs {
     #[arg(short, long, value_name = "TEXT", allow_hyphen_values = true)]
     pub prompt: Option<String>,
 
+    /// Print a shell completion script to stdout and exit
+    #[arg(long, value_name = "SHELL", value_enum)]
+    pub completions: Option<clap_complete::Shell>,
+
     /// Optional subcommand
     #[command(subcommand)]
     pub command: Option<Commands>,

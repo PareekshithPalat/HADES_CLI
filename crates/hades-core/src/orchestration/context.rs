@@ -4,6 +4,19 @@ use hades_tools::WorkspaceMetadata;
 
 use crate::context::TokenEstimator;
 
+/// Returns the longest prefix of `text` that is at most `max_bytes` long and ends on a
+/// UTF-8 character boundary, so truncation never splits a multi-byte character.
+fn prefix_within(text: &str, max_bytes: usize) -> &str {
+    if text.len() <= max_bytes {
+        return text;
+    }
+    let mut end = max_bytes;
+    while !text.is_char_boundary(end) {
+        end -= 1;
+    }
+    &text[..end]
+}
+
 /// Utilities for smart context compaction, tool result budgeting, and minimal system prompts.
 pub struct SmartContextBuilder;
 
@@ -99,7 +112,7 @@ impl SmartContextBuilder {
         if output.len() > char_limit {
             let truncated = format!(
                 "{}...\n[Output truncated to fit token budget: {} chars total]",
-                &output[..char_limit],
+                prefix_within(output, char_limit),
                 output.len()
             );
             return (truncated, true);
@@ -160,7 +173,7 @@ impl SmartContextBuilder {
                     if (k == "body" || k == "content" || k == "description") && v.is_string() {
                         if let Some(s) = v.as_str() {
                             if s.len() > 300 {
-                                let truncated = format!("{}... [truncated]", &s[..300]);
+                                let truncated = format!("{}... [truncated]", prefix_within(s, 300));
                                 cleaned.insert(k.clone(), serde_json::Value::String(truncated));
                                 continue;
                             }

@@ -220,9 +220,59 @@ pub struct SessionMetadata {
     pub total_tokens: u64,
     pub last_message_at: Option<DateTime<Utc>>,
     pub is_archived: bool,
+    /// User-assigned category tags (e.g. "bugfix", "refactor"), normalized via [`normalize_tag`].
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub tags: Vec<String>,
+}
+
+/// Maximum number of tags a session can carry.
+pub const MAX_SESSION_TAGS: usize = 8;
+/// Maximum length of a single tag.
+pub const MAX_TAG_LEN: usize = 24;
+
+/// Normalizes a user-supplied tag: trims, strips surrounding `[ ]` or a leading `#`, and
+/// lowercases. Returns `None` unless the result is 1-24 characters of letters, digits,
+/// `-`, `_` or `.`.
+pub fn normalize_tag(raw: &str) -> Option<String> {
+    let trimmed = raw.trim();
+    let unwrapped = trimmed
+        .strip_prefix('[')
+        .and_then(|t| t.strip_suffix(']'))
+        .or_else(|| trimmed.strip_prefix('#'))
+        .unwrap_or(trimmed)
+        .trim()
+        .to_lowercase();
+    let valid = !unwrapped.is_empty()
+        && unwrapped.chars().count() <= MAX_TAG_LEN
+        && unwrapped
+            .chars()
+            .all(|c| c.is_alphanumeric() || matches!(c, '-' | '_' | '.'));
+    valid.then_some(unwrapped)
 }
 
 impl SessionMetadata {
+    /// Adds a normalized tag. Returns `false` if the tag was already present or the
+    /// session already has [`MAX_SESSION_TAGS`] tags.
+    pub fn add_tag(&mut self, tag: &str) -> bool {
+        if self.tags.iter().any(|t| t == tag) || self.tags.len() >= MAX_SESSION_TAGS {
+            return false;
+        }
+        self.tags.push(tag.to_string());
+        self.updated_at = Utc::now();
+        true
+    }
+
+    /// Removes a tag. Returns `false` if it was not present.
+    pub fn remove_tag(&mut self, tag: &str) -> bool {
+        let before = self.tags.len();
+        self.tags.retain(|t| t != tag);
+        let removed = self.tags.len() != before;
+        if removed {
+            self.updated_at = Utc::now();
+        }
+        removed
+    }
+
     /// Constructs initial session metadata.
     pub fn new(
         id: impl Into<String>,
@@ -244,6 +294,7 @@ impl SessionMetadata {
             total_tokens: 0,
             last_message_at: None,
             is_archived: false,
+            tags: Vec::new(),
         }
     }
 }

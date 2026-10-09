@@ -11,10 +11,11 @@ use crate::filesystem::{
 };
 use crate::shell::ShellExecuteTool;
 use crate::system::{
-    SystemArchitectureTool, SystemHostnameTool, SystemInfoTool, SystemNetworkConnectionsTool,
-    SystemNetworkInterfacesTool, SystemNetworkPortCheckTool, SystemNetworkPortProcessTool,
-    SystemPlatformTool, SystemProcessFindTool, SystemProcessInspectTool, SystemProcessListTool,
-    SystemProcessTerminateTool, SystemRuntimeVersionTool, SystemRuntimeWhichTool, SystemUptimeTool,
+    SystemArchitectureTool, SystemGpuTool, SystemHostnameTool, SystemInfoTool,
+    SystemNetworkConnectionsTool, SystemNetworkInterfacesTool, SystemNetworkPortCheckTool,
+    SystemNetworkPortProcessTool, SystemPlatformTool, SystemProcessFindTool,
+    SystemProcessInspectTool, SystemProcessListTool, SystemProcessTerminateTool,
+    SystemRuntimeVersionTool, SystemRuntimeWhichTool, SystemUptimeTool,
 };
 use crate::workspace_tools::{WorkspaceDetectTool, WorkspaceInspectTool};
 
@@ -95,6 +96,7 @@ impl ToolRegistry {
         reg.register(SystemInfoTool);
         reg.register(SystemPlatformTool);
         reg.register(SystemArchitectureTool);
+        reg.register(SystemGpuTool);
         reg.register(SystemHostnameTool);
         reg.register(SystemUptimeTool);
         reg.register(SystemProcessListTool);

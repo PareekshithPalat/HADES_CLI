@@ -1,5 +1,6 @@
 use std::collections::HashMap;
 use std::sync::Arc;
+use std::time::{Duration, Instant};
 use tracing::{debug, info};
 
 use crate::credential::Credential;
@@ -8,6 +9,22 @@ use crate::model::Model;
 use crate::provider::{Provider, ProviderMetadata};
 use crate::request::{CompletionRequest, CompletionResponse};
 use crate::stream::StreamResult;
+
+/// Result of a successful provider and model verification.
+#[derive(Debug, Clone, PartialEq)]
+pub struct ProviderVerification {
+    /// The verified model.
+    pub model: Model,
+    /// Round-trip time of the provider authentication request.
+    pub latency: Duration,
+}
+
+impl ProviderVerification {
+    /// Round-trip latency in whole milliseconds.
+    pub fn latency_ms(&self) -> u128 {
+        self.latency.as_millis()
+    }
+}
 
 /// Central coordinator for AI providers and model lifecycle management.
 #[derive(Default)]
@@ -117,6 +134,30 @@ impl ModelManager {
         provider.authenticate(credential).await?;
         let model = provider.get_model(model_id, credential).await?;
         Ok(model)
+    }
+
+    /// Verifies provider access and the model like [`Self::verify_provider_and_model`],
+    /// additionally measuring the round-trip latency of the authentication request.
+    pub async fn verify_with_latency(
+        &self,
+        provider_id: &str,
+        model_id: &str,
+        credential: &Credential,
+    ) -> Result<ProviderVerification, ProviderError> {
+        let provider = self
+            .get_provider(provider_id)
+            .ok_or_else(|| ProviderError::Other {
+                provider: provider_id.to_string(),
+                message: format!("Provider '{provider_id}' is not registered"),
+            })?;
+
+        info!(provider = %provider_id, model = %model_id, "Verifying provider and model access");
+        let started = Instant::now();
+        provider.authenticate(credential).await?;
+        let latency = started.elapsed();
+        let model = provider.get_model(model_id, credential).await?;
+        info!(provider = %provider_id, latency_ms = latency.as_millis() as u64, "Provider verified");
+        Ok(ProviderVerification { model, latency })
     }
 
     /// Executes a standard completion request using the active model or an explicitly specified model.
