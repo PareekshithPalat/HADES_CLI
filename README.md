@@ -68,7 +68,7 @@ Unlike browser-based assistants or opaque cloud coding tools, Hades executes nat
        ┌───────────────────────┬───────────────┴───────────────┬───────────────────────┐
        ▼                       ▼                               ▼                       ▼
 ┌──────────────┐      ┌─────────────────┐             ┌─────────────────┐     ┌─────────────────┐
-│  AI Engine   │      │ 52-Tool Sandbox │             │   Multi-Agent   │     │ Web & Browser   │
+│  AI Engine   │      │ 53-Tool Sandbox │             │   Multi-Agent   │     │ Web & Browser   │
 │ OpenAI / Groq│      │ Filesystem, OS, │             │  Orchestration  │     │ Direct Search & │
 │ DeepSeek     │      │ Shell, Network, │             │ Planner, Coder, │     │ Fetch, Headless │
 │ Local Ollama │      │ Process & Runtime│            │ Reviewer, DevOps│     │ Chromium Sidecar│
@@ -93,7 +93,7 @@ Unlike browser-based assistants or opaque cloud coding tools, Hades executes nat
 - **Dynamic Capability Probing**: Inspects model capabilities on the fly (streaming, tool payloads, JSON schema validation, context window size).
 - **Secure Credential Vault**: API keys are securely stored in local encrypted files (`~/.hades/credentials.json`) and automatically redacted from logs, transcripts, and UI viewports.
 
-### 2. Sandboxed Tool Execution (52 Built-in Tools)
+### 2. Sandboxed Tool Execution (53 Built-in Tools)
 - **Filesystem & Codebase Operations**: Safe file creation, surgical line-based editing, directory scanning, and deletion within validated workspace boundaries.
 - **Shell & Process Management**: Run build scripts, test suites, and terminal commands with configurable timeouts and output truncation guards.
 - **System & Network Diagnostics**: Inspect CPU, memory, uptime, open ports, socket states, and running processes with PID resolution.
@@ -260,7 +260,7 @@ Type `/` in the prompt input field to activate the command palette. Shorthand al
 | :--- | :--- | :--- |
 | `/help` (`/h`) | None | Display modal listing all available keyboard shortcuts and slash commands. |
 | `/model` (`/m`) | None | Open model picker to switch AI providers and target models. |
-| `/tools` (`/t`) | None | Inspect registry of 52 built-in agent tools and external MCP tools. |
+| `/tools` (`/t`) | None | Inspect registry of 53 built-in agent tools and external MCP tools. |
 | `/browser`| None | Inspect web intelligence status, detected browser binary, and active tabs. |
 | `/mcp` | None | Inspect configured Model Context Protocol (MCP) servers, tools, and diagnostics. |
 | `/permissions` | None | View security rules, permission scopes, and risk levels for active session. |
@@ -274,7 +274,7 @@ Type `/` in the prompt input field to activate the command palette. Shorthand al
 
 ---
 
-## Built-in Agent Tools Reference (52 Tools)
+## Built-in Agent Tools Reference (53 Tools)
 
 ### Core System & Filesystem Tools (`hades-tools`)
 
@@ -297,6 +297,7 @@ Type `/` in the prompt input field to activate the command palette. Shorthand al
 | **System Info** | `system.info` | Safe | Host machine diagnostics: OS kernel, system load, hostname, uptime. |
 | | `system.platform` | Safe | Identify operating system platform (macOS, Linux, Windows). |
 | | `system.architecture` | Safe | Inspect CPU architecture (x86_64, aarch64). |
+| | `system.gpu` | Safe | Report GPU model, VRAM and utilization (nvidia-smi or native OS tools) for local inference. |
 | | `system.hostname` | Safe | Retrieve network node hostname. |
 | | `system.uptime` | Safe | Inspect host uptime in seconds and formatted duration. |
 | **Process Control** | `system.process.list` | Safe | List running system processes with PID, CPU, and memory metrics. |
